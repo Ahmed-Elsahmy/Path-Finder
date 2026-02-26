@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace BLL.Dtos
+namespace BLL.Dtos.AuthDtos
 {
     public class AuthModel
     {

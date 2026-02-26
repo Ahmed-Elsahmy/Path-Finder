@@ -5,13 +5,13 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace BLL.Dtos
+namespace BLL.Dtos.AuthDtos
 {
     public class LoginRQ
     {
-        [Required]
+        [Required(ErrorMessage ="Please write your Email-address.")]
        public string Email { get; set; }
-        [Required]
+        [Required(ErrorMessage ="Please write your password.")]
         public string Password { get; set; }
     }
 }
