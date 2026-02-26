@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Google Token Generator</title>
+</head>
+<body style="padding: 50px; font-family: sans-serif;">
+    <h2>1. Login with Google</h2>
+    
+    <!-- Load Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    
+    <!-- Google Login Button Configuration -->
+    <div id="g_id_onload"
+         data-client_id="279943076288-b2g4v0rcc6pi8dj8ngmv6oq7c3keqfrk.apps.googleusercontent.com"
+         data-context="signin"
+         data-ux_mode="popup"
+         data-callback="handleCredentialResponse"
+         data-auto_prompt="false">
+    </div>
+    <div class="g_id_signin" data-type="standard" data-size="large" data-theme="outline" data-text="sign_in_with" data-shape="rectangular" data-logo_alignment="left"></div>
+
+    <h2>2. Copy your Token</h2>
+    <p>Double-click the text below to select all, then copy it:</p>
+    <textarea id="token-display" rows="10" cols="100" readonly style="width: 100%;"></textarea>
+
+    <script>
+        function handleCredentialResponse(response) {
+            // This is the id_token you need for Swagger!
+            document.getElementById('token-display').value = response.credential;
+            console.log("Token generated successfully!");
+        }
+    </script>
+</body>
+</html>

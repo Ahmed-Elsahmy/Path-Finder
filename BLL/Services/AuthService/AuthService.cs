@@ -1,12 +1,16 @@
-﻿using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
-using BLL.Dtos;
+﻿using BLL.Dtos.AuthDtos;
+using BLL.Services.EmailService;
 using DAL.Helper;
 using DAL.Models;
+using Google.Apis.Auth;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
 namespace BLL.Services.AuthService
 {
@@ -15,11 +19,16 @@ namespace BLL.Services.AuthService
         private readonly UserManager<User> _userManager;
         private readonly RoleManager<IdentityRole> _roleManager;
         private readonly JWT _jwt;
-        public AuthService(UserManager<User> userManager, RoleManager<IdentityRole> roleManager, IOptions<JWT> jwt)
+        private readonly IConfiguration _configuration;
+        private readonly IEmailService _emailService;
+
+        public AuthService(UserManager<User> userManager, RoleManager<IdentityRole> roleManager, IOptions<JWT> jwt, IConfiguration configuration, IEmailService emailService)
         {
             _userManager = userManager;
             _roleManager = roleManager;
             _jwt = jwt.Value;
+            _configuration = configuration;
+            _emailService = emailService;
         }
         public async Task<AuthModel> RegisterAsync(RegisterRQ model)
         {
@@ -30,13 +39,13 @@ namespace BLL.Services.AuthService
 
                 if (await _userManager.FindByNameAsync(model.Username) is not null)
                     return new AuthModel { Message = "Username is already registered!" };
-
                 var user = new User
                 {
                     UserName = model.Username,
                     Email = model.Email,
                     FirstName = model.FirstName,
-                    LastName = model.LastName
+                    LastName = model.LastName,
+                    PhoneNumber = model.PhoneNumber,
                 };
 
                 var result = await _userManager.CreateAsync(user, model.Password);
@@ -52,7 +61,9 @@ namespace BLL.Services.AuthService
                 }
 
                 await _userManager.AddToRoleAsync(user, "User");
-
+                var otp = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
+                var emailBody = $"<h1>Welcome to Path Finder!</h1><p>Your 6-digit email confirmation code is: <strong>{otp}</strong></p><p>Please use this code to verify your account.</p>";
+                await _emailService.SendEmailAsync(user.Email, "Confirm your Email", emailBody);
                 var jwtSecurityToken = await CreateJwtToken(user);
 
                 return new AuthModel
@@ -62,7 +73,8 @@ namespace BLL.Services.AuthService
                     IsAuthenticated = true,
                     Roles = new List<string> { "User" },
                     Token = new JwtSecurityTokenHandler().WriteToken(jwtSecurityToken),
-                    Username = user.UserName
+                    Username = user.UserName,
+                    Message = "User registered successfully! Please check your email for the 6-digit confirmation code."
                 };
             }
             catch (Exception ex)
@@ -83,7 +95,11 @@ namespace BLL.Services.AuthService
                     authModel.Message = "Email or Password is incorrect!";
                     return authModel;
                 }
-
+                if (!user.EmailConfirmed)
+                {
+                    authModel.Message = "Please confirm your email address before logging in!";
+                    return authModel;
+                }
                 var jwtSecurityToken = await CreateJwtToken(user);
                 var rolesList = await _userManager.GetRolesAsync(user);
 
@@ -93,6 +109,7 @@ namespace BLL.Services.AuthService
                 authModel.Username = user.UserName;
                 authModel.ExpiresOn = jwtSecurityToken.ValidTo;
                 authModel.Roles = rolesList.ToList();
+                authModel.Message = "User logged in successfully!";
 
                 return authModel;
             }
@@ -137,6 +154,173 @@ namespace BLL.Services.AuthService
             catch (Exception ex)
             {
                 throw new Exception(ex.Message);
+            }
+        }
+
+        public async Task<AuthModel> GoogleSignInAsync(GoogleAuthRQ model)
+        {
+            try
+            {
+                var settings = new GoogleJsonWebSignature.ValidationSettings()
+                {
+                    Audience = new List<string>() { _configuration["Google:ClientId"] }
+                };
+
+                var payload = await GoogleJsonWebSignature.ValidateAsync(model.IdToken, settings);
+
+                var user = await _userManager.FindByEmailAsync(payload.Email);
+
+                if (user == null)
+                {
+                    user = new User
+                    {
+                        UserName = payload.Email.Split('@')[0], //save all chars before @ as username
+                        Email = payload.Email,
+                        FirstName = payload.GivenName ?? "",
+                        LastName = payload.FamilyName ?? "",
+                        CreatedAt = DateTime.UtcNow,
+                        LastLogin = DateTime.UtcNow,
+                        EmailConfirmed = true // Since it's Google auth, we can consider the email as confirmed
+                    };
+                    // there's no password since it's Google auth, so we create the user without a password
+                    var result = await _userManager.CreateAsync(user);
+
+                    if (!result.Succeeded)
+                    {
+                        var errors = string.Join(",", result.Errors.Select(e => e.Description));
+                        return new AuthModel { Message = errors };
+                    }
+
+                    await _userManager.AddToRoleAsync(user, "User");
+                }
+                else
+                {
+                    // Update Last Login if user already exists
+                    user.LastLogin = DateTime.UtcNow;
+                    await _userManager.UpdateAsync(user);
+                }
+
+                var jwtSecurityToken = await CreateJwtToken(user);
+                var rolesList = await _userManager.GetRolesAsync(user);
+
+                return new AuthModel
+                {
+                    Email = user.Email,
+                    ExpiresOn = jwtSecurityToken.ValidTo,
+                    IsAuthenticated = true,
+                    Roles = rolesList.ToList(),
+                    Token = new JwtSecurityTokenHandler().WriteToken(jwtSecurityToken),
+                    Username = user.UserName,
+                    Message = "User authenticated successfully via Google!"
+                };
+            }
+            catch (InvalidJwtException ex)
+            {
+                return new AuthModel { Message = $"Invalid Google Authentication Token" + ex.Message};
+            }
+            catch (Exception ex)
+            {
+                return new AuthModel { Message = ex.Message };
+            }
+        }
+
+        public async Task<AuthModel> ForgotPasswordAsync(ForgotPasswordRQ model)
+        {
+            var user = await _userManager.FindByEmailAsync(model.Email);  // get user data
+
+            if (user == null)
+            {
+                return new AuthModel { Message = "If an account with that email exists, a code has been sent." };
+            }
+            try
+            {
+                var otp = await _userManager.GenerateTwoFactorTokenAsync(user, "Email"); // genterate Uniqe Code
+                // send confrimation mail to email address
+                var emailBody = $"<h1> Hello From Path Finder </h1> <h1>Reset Your Password</h1><p>Your 6-digit password reset code is: <strong>{otp}</strong></p><p>This code will expire shortly , Path Finder (Team).</p>";
+
+                await _emailService.SendEmailAsync(user.Email, "Your Password Reset Code", emailBody);
+
+                return new AuthModel
+                {
+                    IsAuthenticated = false,
+                    Message = "A 6-digit code has been sent to your email address.",
+                    Username = user.UserName,
+                    Email = user.Email,
+
+                };
+            }
+            catch (Exception ex)
+            {
+                return new AuthModel { Message = "An error occurred while Send OTP Code To Your Email : " + ex.Message };
+
+            }
+        }
+
+        public async Task<AuthModel> ResetPasswordAsync(ResetPasswordRQ model)
+        {
+            var user = await _userManager.FindByEmailAsync(model.Email);
+            if (user == null)
+                return new AuthModel { Message = "Invalid Email or OTP code." };
+
+            try
+            {
+                // Check otp code
+                var isValidOtp = await _userManager.VerifyTwoFactorTokenAsync(user, "Email", model.Otp);
+
+                if (!isValidOtp)
+                    return new AuthModel { Message = "Invalid or expired OTP code." };
+
+                //  Since the OTP is valid, generate the long Identity token internally
+                // (We do this entirely in the backend so the user never has to see the massive string)
+                var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
+
+                var result = await _userManager.ResetPasswordAsync(user, resetToken, model.NewPassword);
+
+                if (!result.Succeeded)
+                {
+                    var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                    return new AuthModel { Message = errors };
+                }
+
+                return new AuthModel { Message = "Password has been reset successfully!", Username = user.UserName, Email = user.Email };
+            }
+            catch (Exception ex)
+            {
+                return new AuthModel { Message = "An error occurred while resetting the password: " + ex.Message };
+            }
+        }
+
+        public async Task<AuthModel> ConfirmEmailAsync(ConfirmEmailRQ model)
+        {
+            var user = await _userManager.FindByEmailAsync(model.Email);
+            if (user == null)
+                return new AuthModel { Message = "User not found." };
+
+            if (user.EmailConfirmed)
+                return new AuthModel { Message = "Email is already confirmed. You can log in directly." };
+            try
+            {
+                var isValidOtp = await _userManager.VerifyTwoFactorTokenAsync(user, "Email", model.Otp);
+
+                if (!isValidOtp)
+                    return new AuthModel { Message = "Invalid or expired OTP code." };
+
+                // If OTP is valid, mark email as confirmed
+                user.EmailConfirmed = true;
+                await _userManager.UpdateAsync(user);
+
+                return new AuthModel
+                {
+                    Message = "Email confirmed successfully! You can now log in.",
+                    IsAuthenticated = true,
+                    Email = user.Email,
+                    Username = user.UserName
+                };
+            }
+            catch (Exception ex)
+            {
+                return new AuthModel { Message = "An error occurred while confirming the email: " + ex.Message };
+
             }
         }
     }
