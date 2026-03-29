@@ -13,5 +13,8 @@ namespace DAL.Models
         public string LastName { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime LastLogin { get; set; }
+        public  List<CV>? Cvs { get; set; }
+        public List<UserSkill>? skills { get; set; }
+        public List<UserEducation>? userEducations { get; set; }
     }
 }
