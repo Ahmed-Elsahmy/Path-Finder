@@ -63,9 +63,8 @@ namespace BLL.Services.AuthService
                 await _userManager.AddToRoleAsync(user, "User");
                 var otp = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
                 var emailBody = $"<h1>Welcome to Path Finder!</h1><p>Your 6-digit email confirmation code is: <strong>{otp}</strong></p><p>Please use this code to verify your account.</p>";
-                await _emailService.SendEmailAsync(user.Email, "Confirm your Email", emailBody);
+                await _emailService.SendEmailAsync(user.Email, "Path Finder : Confirm your Email", emailBody);
                 var jwtSecurityToken = await CreateJwtToken(user);
-
                 return new AuthModel
                 {
                     Email = user.Email,
@@ -238,7 +237,7 @@ namespace BLL.Services.AuthService
                 // send confrimation mail to email address
                 var emailBody = $"<h1> Hello From Path Finder </h1> <h1>Reset Your Password</h1><p>Your 6-digit password reset code is: <strong>{otp}</strong></p><p>This code will expire shortly , Path Finder (Team).</p>";
 
-                await _emailService.SendEmailAsync(user.Email, "Your Password Reset Code", emailBody);
+                await _emailService.SendEmailAsync(user.Email, "Path Finder : Your Password Reset Code", emailBody);
 
                 return new AuthModel
                 {
