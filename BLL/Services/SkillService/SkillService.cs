@@ -1,34 +1,58 @@
-﻿using BLL.Dtos;
+﻿using AutoMapper;
+using BLL.Common;
 using BLL.Dtos.SkillDtos;
-using DAL.Helper;
 using DAL.Models;
+using DAL.Repository;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace BLL.Services.SkillService
 {
     public class SkillService : ISkillService
     {
-        private readonly AppDbContext _context;
+        private readonly IRepository<Skill> _skillRepository;
+        private readonly IRepository<UserSkill> _userSkillRepository;
+        private readonly IMapper _mapper;
+        private readonly ILogger<SkillService> _logger;
 
-        public SkillService(AppDbContext context)
+        public SkillService(
+            IRepository<Skill> skillRepository,
+            IRepository<UserSkill> userSkillRepository,
+            IMapper mapper,
+            ILogger<SkillService> logger)
         {
-            _context = context;
+            _skillRepository = skillRepository;
+            _userSkillRepository = userSkillRepository;
+            _mapper = mapper;
+            _logger = logger;
         }
 
-        public async Task<List<Skill>> GetAllGlobalSkillsAsync()
-        {
-            return await _context.Skills.OrderBy(s => s.SkillName).ToListAsync();
-        }
-
-        public async Task<string> CreateGlobalSkillAsync(CreateSkillRQ request)
+        public async Task<ServiceResult<List<Skill>>> GetAllGlobalSkillsAsync()
         {
             try
             {
-                // Check if skill already exists (case-insensitive)
-                var exists = await _context.Skills
+                var skills = await _skillRepository.Query()
+                    .OrderBy(s => s.SkillName)
+                    .ToListAsync();
+
+                return ServiceResult<List<Skill>>.Success(skills);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving global skills");
+                return ServiceResult<List<Skill>>.Failure("An error occurred while retrieving skills.");
+            }
+        }
+
+        public async Task<ServiceResult<string>> CreateGlobalSkillAsync(CreateSkillRQ request)
+        {
+            try
+            {
+                var exists = await _skillRepository
                     .AnyAsync(s => s.SkillName.ToLower() == request.SkillName.ToLower());
 
-                if (exists) return "Skill already exists in the system.";
+                if (exists)
+                    return ServiceResult<string>.Failure("Skill already exists in the system.");
 
                 var newSkill = new Skill
                 {
@@ -38,31 +62,31 @@ namespace BLL.Services.SkillService
                     IsTechnical = request.IsTechnical
                 };
 
-                _context.Skills.Add(newSkill);
-                await _context.SaveChangesAsync();
-                return "Skill created successfully.";
+                await _skillRepository.AddAsync(newSkill);
+                await _skillRepository.SaveChangesAsync();
+
+                return ServiceResult<string>.Success("Skill created successfully.");
             }
             catch (Exception ex)
             {
-                // Log the exception (not implemented here)
-                return $"An error occurred while creating the skill: {ex.Message}";
+                _logger.LogError(ex, "Error creating global skill {SkillName}", request.SkillName);
+                return ServiceResult<string>.Failure($"An error occurred while creating the skill: {ex.Message}");
             }
         }
 
-        public async Task<string> AddSkillToUserAsync(string userId, AddUserSkillRQ request)
+        public async Task<ServiceResult<string>> AddSkillToUserAsync(string userId, AddUserSkillRQ request)
         {
             try
             {
-                // 1. Check if the skill actually exists in the global DB
-                var skillExists = await _context.Skills.AnyAsync(s => s.SkillId == request.SkillId);
-                if (!skillExists) return "Skill not found in the global repository.";
+                var skillExists = await _skillRepository.AnyAsync(s => s.SkillId == request.SkillId);
+                if (!skillExists)
+                    return ServiceResult<string>.Failure("Skill not found in the global repository.");
 
-                // 2. Prevent adding the same skill twice for a user
-                var alreadyHasSkill = await _context.UserSkills
+                var alreadyHasSkill = await _userSkillRepository
                     .AnyAsync(us => us.UserId == userId && us.SkillId == request.SkillId);
-                if (alreadyHasSkill) return "You already have this skill in your profile.";
+                if (alreadyHasSkill)
+                    return ServiceResult<string>.Failure("You already have this skill in your profile.");
 
-                // 3. Add the skill
                 var userSkill = new UserSkill
                 {
                     UserId = userId,
@@ -72,64 +96,56 @@ namespace BLL.Services.SkillService
                     AcquiredDate = DateTime.UtcNow
                 };
 
-                _context.UserSkills.Add(userSkill);
-                await _context.SaveChangesAsync();
-                return "Skill added to your profile.";
+                await _userSkillRepository.AddAsync(userSkill);
+                await _userSkillRepository.SaveChangesAsync();
+
+                return ServiceResult<string>.Success("Skill added to your profile.");
             }
             catch (Exception ex)
             {
-                // Log the exception (not implemented here)
-                return $"An error occurred while adding the skill: {ex.Message}";
+                _logger.LogError(ex, "Error adding skill {SkillId} to user {UserId}", request.SkillId, userId);
+                return ServiceResult<string>.Failure($"An error occurred while adding the skill: {ex.Message}");
             }
-
         }
 
-        public async Task<List<UserSkillRS>> GetUserSkillsAsync(string userId)
+        public async Task<ServiceResult<List<UserSkillRS>>> GetUserSkillsAsync(string userId)
         {
             try
             {
-                return await _context.UserSkills
-         .Include(us => us.Skill) // Join with Skill table to get the Name
-         .Where(us => us.UserId == userId)
-         .Select(us => new UserSkillRS
-         {
-             UserSkillId = us.UserSkillId,
-             SkillId = us.SkillId,
-             SkillName = us.Skill.SkillName,
-             IsTechnical = us.Skill.IsTechnical,
-             Category = us.Skill.Category ?? "",
-             ProficiencyLevel = us.ProficiencyLevel ?? "Not Specified",
-             AcquiredDate = us.AcquiredDate,
-             Source = us.Source ?? "Manual"
-         })
-         .ToListAsync();
+                var userSkills = await _userSkillRepository.Query()
+                    .Include(us => us.Skill)
+                    .Where(us => us.UserId == userId)
+                    .ToListAsync();
+
+                var result = _mapper.Map<List<UserSkillRS>>(userSkills);
+                return ServiceResult<List<UserSkillRS>>.Success(result);
             }
             catch (Exception ex)
             {
-                // Log the exception (not implemented here)
-                return new List<UserSkillRS>(); // Return empty list on error
+                _logger.LogError(ex, "Error retrieving skills for user {UserId}", userId);
+                return ServiceResult<List<UserSkillRS>>.Failure("An error occurred while retrieving your skills.");
             }
-
         }
 
-        public async Task<string> RemoveUserSkillAsync(string userId, int userSkillId)
+        public async Task<ServiceResult<string>> RemoveUserSkillAsync(string userId, int userSkillId)
         {
             try
             {
-                var userSkill = await _context.UserSkills
-    .FirstOrDefaultAsync(us => us.UserSkillId == userSkillId && us.UserId == userId);
+                var userSkill = await _userSkillRepository
+                    .FirstOrDefaultAsync(us => us.UserSkillId == userSkillId && us.UserId == userId);
 
-                if (userSkill == null) return "Skill not found in your profile.";
+                if (userSkill == null)
+                    return ServiceResult<string>.Failure("Skill not found in your profile.");
 
-                _context.UserSkills.Remove(userSkill);
-                await _context.SaveChangesAsync();
-                return "Skill removed successfully.";
+                _userSkillRepository.Remove(userSkill);
+                await _userSkillRepository.SaveChangesAsync();
+
+                return ServiceResult<string>.Success("Skill removed successfully.");
             }
             catch (Exception ex)
             {
-                // Log the exception (not implemented here)
-                return $"An error occurred while removing the skill: {ex.Message}";
-
+                _logger.LogError(ex, "Error removing skill {UserSkillId} for user {UserId}", userSkillId, userId);
+                return ServiceResult<string>.Failure($"An error occurred while removing the skill: {ex.Message}");
             }
         }
     }

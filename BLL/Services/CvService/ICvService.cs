@@ -1,17 +1,14 @@
-﻿using BLL.Dtos.CvDtos;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using BLL.Common;
+using BLL.Dtos.CvDtos;
 
 namespace BLL.Services.CvService
 {
     public interface ICvService
     {
-        Task<string> UploadCvAsync(string userId, UploadCvRQ request, string baseUrl);
-        Task<List<CvRS>> GetUserCvsAsync(string userId);
-        Task<string> SetPrimaryCvAsync(string userId, int cvId);
-        Task<string> DeleteCvAsync(string userId, int cvId);
+        Task<ServiceResult<string>> UploadCvAsync(string userId, UploadCvRQ request, string baseUrl);
+        Task<ServiceResult<List<CvRS>>> GetUserCvsAsync(string userId);
+        Task<ServiceResult<string>> SetPrimaryCvAsync(string userId, int cvId);
+        Task<ServiceResult<string>> DeleteCvAsync(string userId, int cvId);
+        Task<ServiceResult<CvComparisonRS>> CompareCvsAsync(string userId,  CvComparisonRQ request, CancellationToken cancellationToken = default);
     }
 }

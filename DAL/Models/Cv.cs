@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Storage.ValueConversion.Internal;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion.Internal;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -34,6 +34,9 @@ namespace DAL.Models
         public bool IsPrimary { get; set; } = false;
 
         public List<string>? ExtractedSkills { get; set; }
-        public List<string>? CVIssues { get; set; } 
+        public List<string>? CVIssues { get; set; }
+        public int CVScore { get; set; } = 0;
+        public List<string>? SuggestedJobTitles { get; set; }
+        public List<string>? RecommendedSkills { get; set; }
     }
 }

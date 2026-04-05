@@ -1,4 +1,6 @@
+﻿using BLL.Mapping;
 using BLL.Services.AuthService;
+using BLL.Services.ChatbotService;
 using BLL.Services.CvService;
 using BLL.Services.EducationService;
 using BLL.Services.EducationServices;
@@ -6,12 +8,14 @@ using BLL.Services.EmailService;
 using BLL.Services.SkillService;
 using DAL.Helper;
 using DAL.Models;
+using DAL.Repository;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Path_Finder.Middleware;
+using Serilog;
 using System.Text;
 
 namespace Path_Finder
@@ -20,107 +24,160 @@ namespace Path_Finder
     {
         public static void Main(string[] args)
         {
-            var builder = WebApplication.CreateBuilder(args);
+            // Configure Serilog from appsettings.json
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                .AddJsonFile($"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}.json", optional: true)
+                .AddUserSecrets<Program>(optional: true)
+                .Build();
 
-            // Add services to the container.
+            Log.Logger = new LoggerConfiguration()
+                .ReadFrom.Configuration(configuration)
+                .Enrich.FromLogContext()
+                .CreateLogger();
 
-            builder.Services.AddControllers();
-            builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen(options =>
+            try
             {
-                // 1. Define the Security Scheme (The Authorize Button)
-                options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-                {
-                    Name = "Authorization",
-                    Type = SecuritySchemeType.ApiKey,
-                    Scheme = "Bearer",
-                    BearerFormat = "JWT",
-                    In = ParameterLocation.Header,
-                    Description = "Enter 'Bearer' [space] and then your valid token in the text input below.\r\n\r\nExample: \"Bearer eyJhbGciOiJIUzI1Ni...\""
-                });
+                Log.Information("Starting Path Finder API...");
 
-                // 2. Apply the Security Requirement to all endpoints
-                options.AddSecurityRequirement(new OpenApiSecurityRequirement
+                var builder = WebApplication.CreateBuilder(args);
+                builder.Host.UseSerilog();
+
+                // Add services to the container.
+                builder.Services.AddControllers().AddNewtonsoftJson();
+                builder.Services.AddEndpointsApiExplorer();
+                builder.Services.AddSwaggerGen(options =>
                 {
+                    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
                     {
-                        new OpenApiSecurityScheme
+                        Name = "Authorization",
+                        Type = SecuritySchemeType.ApiKey,
+                        Scheme = "Bearer",
+                        BearerFormat = "JWT",
+                        In = ParameterLocation.Header,
+                        Description = "Enter 'Bearer' [space] and then your valid token in the text input below.\r\n\r\nExample: \"Bearer eyJhbGciOiJIUzI1Ni...\""
+                    });
+
+                    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+                    {
                         {
-                            Reference = new OpenApiReference
+                            new OpenApiSecurityScheme
                             {
-                                Type = ReferenceType.SecurityScheme,
-                                Id = "Bearer"
-                            }
-                        },
-                        new List<string>()
-                    }
+                                Reference = new OpenApiReference
+                                {
+                                    Type = ReferenceType.SecurityScheme,
+                                    Id = "Bearer"
+                                }
+                            },
+                            new List<string>()
+                        }
+                    });
                 });
-            });
 
-            builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
-            builder.Services.AddIdentity<User, IdentityRole>().AddEntityFrameworkStores<AppDbContext>().AddDefaultTokenProviders();
-            builder.Services.AddScoped<IAuthService, AuthService>();
-            builder.Services.AddScoped<IEmailService, EmailService>();
-            builder.Services.AddScoped<ISkillService, SkillService>();
-            builder.Services.AddScoped<ICvService, CvService>();
-            builder.Services.AddScoped<IEducationService, EducationService>();
+                // Database
+                builder.Services.AddDbContext<AppDbContext>(options =>
+                    options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
 
-            // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-            builder.Services.Configure<JWT>(builder.Configuration.GetSection("JWT"));
+                // Identity
+                builder.Services.AddIdentity<User, IdentityRole>()
+                    .AddEntityFrameworkStores<AppDbContext>()
+                    .AddDefaultTokenProviders();
 
-            builder.Services.AddCors(options =>
-            {
-                options.AddPolicy("AllowAllClients", policy =>
+                // Repository Pattern
+                builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
+
+                // AutoMapper
+                builder.Services.AddAutoMapper(typeof(MappingProfile).Assembly);
+
+                // Business Services
+                builder.Services.AddScoped<IAuthService, AuthService>();
+                builder.Services.AddScoped<IEmailService, EmailService>();
+                builder.Services.AddScoped<ISkillService, SkillService>();
+                builder.Services.AddScoped<ICvService, CvService>();
+                builder.Services.AddScoped<IEducationService, EducationService>();
+                builder.Services.AddScoped<IChatbotService, ChatbotService>();
+
+                // JWT Configuration
+                builder.Services.Configure<JWT>(builder.Configuration.GetSection("JWT"));
+
+                // CORS
+                builder.Services.AddCors(options =>
                 {
-                    policy.AllowAnyOrigin()   // Allows requests from ANY frontend/mobile domain
-                          .AllowAnyMethod()   // Allows GET, POST, PUT, DELETE, etc.
-                          .AllowAnyHeader();  // Allows custom headers like Authorization (Bearer token)
+                    options.AddPolicy("AllowAllClients", policy =>
+                    {
+                        policy.AllowAnyOrigin()
+                              .AllowAnyMethod()
+                              .AllowAnyHeader();
+                    });
                 });
-            });
-            // ==========================================
 
-            builder.Services.AddAuthentication(options =>
-            {
-                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-            })
-            .AddJwtBearer(o =>
-            {
-                o.RequireHttpsMetadata = false;
-                o.SaveToken = false;
-                o.TokenValidationParameters = new TokenValidationParameters
+                // HttpClient for Gemini API
+                builder.Services.AddHttpClient("GeminiClient", client =>
                 {
-                    ValidateIssuerSigningKey = true,
-                    ValidateIssuer = true,
-                    ValidateAudience = true,
-                    ValidateLifetime = true,
-                    ValidIssuer = builder.Configuration["JWT:Issuer"],
-                    ValidAudience = builder.Configuration["JWT:Audience"],
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JWT:Key"]))
-                };
-            });
+                    client.Timeout = TimeSpan.FromSeconds(60);
+                });
 
-            var app = builder.Build();
+                // Authentication
+                builder.Services.AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+                })
+                .AddJwtBearer(o =>
+                {
+                    o.RequireHttpsMetadata = false;
+                    o.SaveToken = false;
+                    o.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuerSigningKey = true,
+                        ValidateIssuer = true,
+                        ValidateAudience = true,
+                        ValidateLifetime = true,
+                        ValidIssuer = builder.Configuration["JWT:Issuer"],
+                        ValidAudience = builder.Configuration["JWT:Audience"],
+                        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JWT:Key"]))
+                    };
+                });
 
-            // Configure the HTTP request pipeline.
-            if (app.Environment.IsDevelopment())
-            {
-                app.MapOpenApi();
-                app.UseSwagger();
-                app.UseSwaggerUI();
+                var app = builder.Build();
+
+                // Configure the HTTP request pipeline.
+
+                // Global Exception Handler (must be first in pipeline)
+                app.UseMiddleware<GlobalExceptionMiddleware>();
+
+                if (app.Environment.IsDevelopment())
+                {
+                    app.MapOpenApi();
+                    app.UseSwagger();
+                    app.UseSwaggerUI();
+                }
+
+                app.UseHttpsRedirection();
+                app.UseStaticFiles();
+                app.UseRouting();
+
+                // Serilog request logging
+                app.UseSerilogRequestLogging();
+
+                app.UseCors("AllowAllClients");
+
+                app.UseAuthentication();
+                app.UseAuthorization();
+
+                app.MapControllers();
+
+                app.Run();
             }
-
-            app.UseHttpsRedirection();
-            app.UseStaticFiles();
-            app.UseRouting();
-
-            app.UseCors("AllowAllClients");
-
-            app.UseAuthentication();
-            app.UseAuthorization();
-
-            app.MapControllers();
-
-            app.Run();
+            catch (Exception ex)
+            {
+                Log.Fatal(ex, "Application failed to start.");
+            }
+            finally
+            {
+                Log.CloseAndFlush();
+            }
         }
     }
 }
