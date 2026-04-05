@@ -1,11 +1,10 @@
-﻿using BLL.Dtos.EducationDtos;
-using BLL.Services.EducationService;
+using BLL.Dtos.EducationDtos;
 using BLL.Services.EducationServices;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
-using System.Threading.Tasks;
 
 namespace Path_Finder.Controllers
 {
@@ -30,8 +29,14 @@ namespace Path_Finder.Controllers
         public async Task<IActionResult> GetMyEducation()
         {
             var userId = GetUserId();
-            var educationList = await _educationService.GetUserEducationAsync(userId);
-            return Ok(educationList);
+            if (userId is null) return Unauthorized();
+
+            var result = await _educationService.GetUserEducationAsync(userId);
+
+            if (!result.IsSuccess)
+                return BadRequest(new { Message = result.ErrorMessage });
+
+            return Ok(result.Data);
         }
 
         [HttpPost("add")]
@@ -41,64 +46,73 @@ namespace Path_Finder.Controllers
                 return BadRequest(ModelState);
 
             var userId = GetUserId();
+            if (userId is null) return Unauthorized();
+
             var result = await _educationService.AddEducationAsync(userId, request);
 
-            if (result == "Education added successfully.")
-                return Ok(new { Message = result });
+            if (!result.IsSuccess)
+                return BadRequest(new { Message = result.ErrorMessage });
 
-            return BadRequest(new { Message = result });
+            return Ok(new { Message = result.Data });
         }
 
-        [HttpPut("update/{educationId}")]
-        public async Task<IActionResult> UpdateEducation(int educationId, [FromForm] EducationRQ request)
+        [HttpPatch("update/{educationId}")]
+        public async Task<IActionResult> UpdateEducation(int educationId, [FromBody] JsonPatchDocument<UpdateEducationRQ> patchDoc)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
             var userId = GetUserId();
-            var result = await _educationService.UpdateEducationAsync(userId, educationId, request);
+            if (userId is null) return Unauthorized();
 
-            if (result == "Education updated successfully.")
-                return Ok(new { Message = result });
+            var result = await _educationService.UpdateEducationAsync(userId, educationId, patchDoc);
 
-            return BadRequest(new { Message = result });
+            if (!result.IsSuccess)
+                return BadRequest(new { Message = result.ErrorMessage });
+
+            return Ok(new { Message = result.Data });
         }
 
         [HttpDelete("delete/{educationId}")]
         public async Task<IActionResult> DeleteEducation(int educationId)
         {
             var userId = GetUserId();
+            if (userId is null) return Unauthorized();
+
             var result = await _educationService.DeleteEducationAsync(userId, educationId);
 
-            if (result == "Education deleted successfully.")
-                return Ok(new { Message = result });
+            if (!result.IsSuccess)
+                return BadRequest(new { Message = result.ErrorMessage });
 
-            return BadRequest(new { Message = result });
+            return Ok(new { Message = result.Data });
         }
+
         [HttpPost("{educationId}/upload-certificates")]
         public async Task<IActionResult> UploadCertificates(int educationId, [FromForm] List<IFormFile> files)
         {
             var userId = GetUserId();
+            if (userId is null) return Unauthorized();
+
             var result = await _educationService.UploadCertificateAsync(userId, educationId, files);
 
-            if (result == "Certificates uploaded successfully.")
-                return Ok(new { Message = result });
+            if (!result.IsSuccess)
+                return BadRequest(new { Message = result.ErrorMessage });
 
-            return BadRequest(new { Message = result });
+            return Ok(new { Message = result.Data });
         }
 
         [HttpDelete("{educationId}/delete-specific-certificate")]
         public async Task<IActionResult> DeleteSpecificCertificate(int educationId, [FromQuery] string certificateUrl)
         {
             var userId = GetUserId();
+            if (userId is null) return Unauthorized();
 
-            // We get the URL from the query string (e.g., ?certificateUrl=/Uploads/...)
             var result = await _educationService.DeleteCertificateAsync(userId, educationId, certificateUrl);
 
-            if (result == "Certificate deleted successfully.")
-                return Ok(new { Message = result });
+            if (!result.IsSuccess)
+                return BadRequest(new { Message = result.ErrorMessage });
 
-            return BadRequest(new { Message = result });
+            return Ok(new { Message = result.Data });
         }
     }
 }

@@ -1,18 +1,12 @@
-﻿using Microsoft.AspNetCore.Http;
-using System;
-using System.Collections.Generic;
+using Microsoft.AspNetCore.Http;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace BLL.Dtos.EducationDtos
 {
-    public class EducationRQ
+    public class UpdateEducationRQ
     {
-        [Required(ErrorMessage = "Institution name is required.")]
         [StringLength(255)]
-        public string Institution { get; set; }
+        public string? Institution { get; set; }
 
         [StringLength(100)]
         public string? Degree { get; set; }
@@ -25,6 +19,5 @@ namespace BLL.Dtos.EducationDtos
         public DateTime? EndDate { get; set; }
 
         public List<IFormFile>? Certificates { get; set; }
-
     }
 }

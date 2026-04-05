@@ -46,8 +46,16 @@ namespace BLL.Services.AuthService
                     FirstName = model.FirstName,
                     LastName = model.LastName,
                     PhoneNumber = model.PhoneNumber,
+                    CreatedAt = DateTime.UtcNow,
                 };
 
+
+
+                await _userManager.AddToRoleAsync(user, "User");
+                var otp = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
+                var emailBody = $"<h1>Welcome to Path Finder!</h1><p>Your 6-digit email confirmation code is: <strong>{otp}</strong></p><p>Please use this code to verify your account.</p>";
+                await _emailService.SendEmailAsync(user.Email, "Path Finder : Confirm your Email", emailBody);
+                var jwtSecurityToken = await CreateJwtToken(user);
                 var result = await _userManager.CreateAsync(user, model.Password);
 
                 if (!result.Succeeded)
@@ -59,12 +67,6 @@ namespace BLL.Services.AuthService
 
                     return new AuthModel { Message = errors };
                 }
-
-                await _userManager.AddToRoleAsync(user, "User");
-                var otp = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
-                var emailBody = $"<h1>Welcome to Path Finder!</h1><p>Your 6-digit email confirmation code is: <strong>{otp}</strong></p><p>Please use this code to verify your account.</p>";
-                await _emailService.SendEmailAsync(user.Email, "Path Finder : Confirm your Email", emailBody);
-                var jwtSecurityToken = await CreateJwtToken(user);
                 return new AuthModel
                 {
                     Email = user.Email,
@@ -100,6 +102,8 @@ namespace BLL.Services.AuthService
                     return authModel;
                 }
                 var jwtSecurityToken = await CreateJwtToken(user);
+                user.LastLogin = DateTime.UtcNow;
+                await _userManager.UpdateAsync(user);
                 var rolesList = await _userManager.GetRolesAsync(user);
 
                 authModel.IsAuthenticated = true;

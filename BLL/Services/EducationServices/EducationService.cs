@@ -1,86 +1,67 @@
-﻿using BLL.Dtos.EducationDtos;
+﻿using AutoMapper;
+using BLL.Common;
+using BLL.Dtos.EducationDtos;
 using BLL.Services.EducationServices;
-using DAL.Helper;
 using DAL.Models;
+using DAL.Repository;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.JsonPatch;
+using Microsoft.Extensions.Logging;
 
 namespace BLL.Services.EducationService
 {
     public class EducationService : IEducationService
     {
-        private readonly AppDbContext _context;
+        private readonly IRepository<UserEducation> _educationRepository;
         private readonly IWebHostEnvironment _env;
+        private readonly IMapper _mapper;
+        private readonly ILogger<EducationService> _logger;
 
         private static readonly string[] AllowedExtensions = { ".pdf", ".jpg", ".jpeg", ".png" };
         private const long MaxFileSizeBytes = 5 * 1024 * 1024; // 5 MB
 
-        public EducationService(AppDbContext context, IWebHostEnvironment env)
+        public EducationService(
+            IRepository<UserEducation> educationRepository,
+            IWebHostEnvironment env,
+            IMapper mapper,
+            ILogger<EducationService> logger)
         {
-            _context = context;
+            _educationRepository = educationRepository;
             _env = env;
+            _mapper = mapper;
+            _logger = logger;
         }
 
-        public async Task<List<UserEducationRS>> GetUserEducationAsync(string userId)
+        public async Task<ServiceResult<List<UserEducationRS>>> GetUserEducationAsync(string userId)
         {
             try
             {
-                return await _context.UserEducations
-                    .Where(e => e.UserId == userId)
-                    .OrderByDescending(e => e.StartDate)
-                    .Select(e => new UserEducationRS
-                    {
-                        EducationId = e.EducationId,
-                        Institution = e.Institution,
-                        Degree = e.Degree,
-                        FieldOfStudy = e.FieldOfStudy,
-                        StartDate = e.StartDate,
-                        EndDate = e.EndDate,
-                        IsCurrent = e.IsCurrent,
-                        // Make sure your model uses List<string> for CertificatePaths
-                        CertificateUrls = e.CertificatePaths ?? new List<string>()
-                    })
-                    .ToListAsync();
+                var educations = await _educationRepository.FindAsync(e => e.UserId == userId);
+                var ordered = educations.OrderByDescending(e => e.StartDate).ToList();
+                var result = _mapper.Map<List<UserEducationRS>>(ordered);
+                return ServiceResult<List<UserEducationRS>>.Success(result);
             }
-            catch
+            catch (Exception ex)
             {
-                return new List<UserEducationRS>();
+                _logger.LogError(ex, "Error retrieving education for user {UserId}", userId);
+                return ServiceResult<List<UserEducationRS>>.Failure("An error occurred while retrieving your education records.");
             }
         }
 
-        public async Task<string> AddEducationAsync(string userId, EducationRQ request)
+        public async Task<ServiceResult<string>> AddEducationAsync(string userId, EducationRQ request)
         {
             try
             {
                 List<string> certificatePaths = new List<string>();
 
-                // Process Multiple Certificates
                 if (request.Certificates != null && request.Certificates.Any())
                 {
-                    foreach (var file in request.Certificates)
-                    {
-                        if (file.Length > MaxFileSizeBytes) return $"File {file.FileName} exceeds 5 MB.";
-                        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-                        if (!AllowedExtensions.Contains(extension)) return $"File {file.FileName} is not a valid format.";
+                    var validationError = ValidateFiles(request.Certificates);
+                    if (validationError != null)
+                        return ServiceResult<string>.Failure(validationError);
 
-                        var uploadFolder = Path.Combine(_env.WebRootPath, "Uploads", "certificates", userId);
-                        Directory.CreateDirectory(uploadFolder);
-
-                        var uniqueFileName = $"{Guid.NewGuid()}{extension}";
-                        var fullPath = Path.Combine(uploadFolder, uniqueFileName);
-
-                        using (var stream = new FileStream(fullPath, FileMode.Create))
-                        {
-                            await file.CopyToAsync(stream);
-                        }
-                        certificatePaths.Add($"/Uploads/certificates/{userId}/{uniqueFileName}");
-                    }
+                    certificatePaths = await UploadFilesAsync(request.Certificates, userId);
                 }
 
                 var education = new UserEducation
@@ -91,7 +72,7 @@ namespace BLL.Services.EducationService
                     FieldOfStudy = request.FieldOfStudy,
                     StartDate = request.StartDate,
                     EndDate = request.EndDate ?? DateTime.Now,
-                    CertificatePaths = certificatePaths // Save the List
+                    CertificatePaths = certificatePaths
                 };
 
                 if (education.EndDate < DateTime.Now)
@@ -99,172 +80,182 @@ namespace BLL.Services.EducationService
                 else
                     education.IsCurrent = true;
 
-                _context.UserEducations.Add(education);
-                await _context.SaveChangesAsync();
-                return "Education added successfully.";
+                await _educationRepository.AddAsync(education);
+                await _educationRepository.SaveChangesAsync();
+
+                return ServiceResult<string>.Success("Education added successfully.");
             }
             catch (Exception ex)
             {
-                return ex.Message;
+                _logger.LogError(ex, "Error adding education for user {UserId}", userId);
+                return ServiceResult<string>.Failure($"An error occurred while adding education: {ex.Message}");
             }
         }
 
-        public async Task<string> UpdateEducationAsync(string userId, int educationId, EducationRQ request)
+        public async Task<ServiceResult<string>> UpdateEducationAsync(string userId, int educationId, JsonPatchDocument<UpdateEducationRQ> patchDoc)
         {
             try
             {
-                var education = await _context.UserEducations
+                var education = await _educationRepository
                     .FirstOrDefaultAsync(e => e.EducationId == educationId && e.UserId == userId);
 
-                if (education == null) return "Education record not found.";
+                if (education == null)
+                    return ServiceResult<string>.Failure("Education record not found.");
 
-                education.Institution = request.Institution ?? education.Institution;
-                education.Degree = request.Degree ?? education.Degree;
-                education.FieldOfStudy = request.FieldOfStudy ?? education.FieldOfStudy;
-                education.StartDate = request.StartDate ?? education.StartDate;
-                education.EndDate = request.EndDate ?? education.EndDate;
-
-                if (education.EndDate < DateTime.Now) education.IsCurrent = false;
-                else education.IsCurrent = true;
-
-                // If user uploads NEW certificates during update, we REPLACE the old ones
-                if (request.Certificates != null && request.Certificates.Any())
+                var dto = new UpdateEducationRQ
                 {
-                    // 1. Delete old certificates from disk
-                    if (education.CertificatePaths != null)
-                    {
-                        foreach (var oldPath in education.CertificatePaths)
-                            DeleteFileFromDisk(oldPath);
-                    }
-                    education.CertificatePaths = new List<string>();
+                    Institution = education.Institution,
+                    Degree = education.Degree,
+                    FieldOfStudy = education.FieldOfStudy,
+                    StartDate = education.StartDate,
+                    EndDate = education.EndDate
+                };
 
-                    // 2. Upload new certificates
-                    foreach (var file in request.Certificates)
-                    {
-                        if (file.Length > MaxFileSizeBytes) return $"File {file.FileName} exceeds 5 MB.";
-                        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-                        if (!AllowedExtensions.Contains(extension)) return $"File {file.FileName} is not a valid format.";
+                patchDoc.ApplyTo(dto);
 
-                        var uploadFolder = Path.Combine(_env.WebRootPath, "Uploads", "certificates", userId);
-                        Directory.CreateDirectory(uploadFolder);
+                // Step 3: Validate (VERY IMPORTANT)
+                if (dto.EndDate < dto.StartDate)
+                    return ServiceResult<string>.Failure("EndDate cannot be before StartDate");
+  
+                education.Institution = dto.Institution;
+                education.Degree = dto.Degree;
+                education.FieldOfStudy = dto.FieldOfStudy;
+                education.StartDate = dto.StartDate;
+                education.EndDate = dto.EndDate;
 
-                        var uniqueFileName = $"{Guid.NewGuid()}{extension}";
-                        var fullPath = Path.Combine(uploadFolder, uniqueFileName);
+                education.IsCurrent = education.EndDate >= DateTime.UtcNow;
 
-                        using (var stream = new FileStream(fullPath, FileMode.Create))
-                        {
-                            await file.CopyToAsync(stream);
-                        }
-                        education.CertificatePaths.Add($"/Uploads/certificates/{userId}/{uniqueFileName}");
-                    }
-                }
+                await _educationRepository.SaveChangesAsync();
 
-                await _context.SaveChangesAsync();
-                return "Education updated successfully.";
+                return ServiceResult<string>.Success("Education updated successfully.");
             }
             catch (Exception ex)
             {
-                return ex.Message;
+                _logger.LogError(ex, "Error updating education {EducationId} for user {UserId}", educationId, userId);
+                return ServiceResult<string>.Failure($"An error occurred while updating education: {ex.Message}");
             }
         }
 
-        public async Task<string> DeleteEducationAsync(string userId, int educationId)
+        public async Task<ServiceResult<string>> DeleteEducationAsync(string userId, int educationId)
         {
             try
             {
-                var education = await _context.UserEducations
+                var education = await _educationRepository
                     .FirstOrDefaultAsync(e => e.EducationId == educationId && e.UserId == userId);
 
-                if (education == null) return "Education record not found.";
+                if (education == null)
+                    return ServiceResult<string>.Failure("Education record not found.");
 
-                // Delete ALL certificates associated with this education from disk
                 if (education.CertificatePaths != null)
                 {
                     foreach (var path in education.CertificatePaths)
                         DeleteFileFromDisk(path);
                 }
 
-                _context.UserEducations.Remove(education);
-                await _context.SaveChangesAsync();
-                return "Education deleted successfully.";
+                _educationRepository.Remove(education);
+                await _educationRepository.SaveChangesAsync();
+                return ServiceResult<string>.Success("Education deleted successfully.");
             }
             catch (Exception ex)
             {
-                return ex.Message;
+                _logger.LogError(ex, "Error deleting education {EducationId} for user {UserId}", educationId, userId);
+                return ServiceResult<string>.Failure($"An error occurred while deleting education: {ex.Message}");
             }
         }
 
-        // Changed from single file to List<IFormFile>
-        public async Task<string> UploadCertificateAsync(string userId, int educationId, List<IFormFile> files)
+        public async Task<ServiceResult<string>> UploadCertificateAsync(string userId, int educationId, List<IFormFile> files)
         {
             try
             {
-                var education = await _context.UserEducations
+                var education = await _educationRepository
                     .FirstOrDefaultAsync(e => e.EducationId == educationId && e.UserId == userId);
 
-                if (education == null) return "Education record not found.";
-                if (files == null || !files.Any()) return "No files provided.";
+                if (education == null)
+                    return ServiceResult<string>.Failure("Education record not found.");
+
+                if (files == null || !files.Any())
+                    return ServiceResult<string>.Failure("No files provided.");
 
                 if (education.CertificatePaths == null)
                     education.CertificatePaths = new List<string>();
 
-                foreach (var file in files)
-                {
-                    if (file.Length > MaxFileSizeBytes) return $"File {file.FileName} exceeds 5 MB.";
-                    var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-                    if (!AllowedExtensions.Contains(extension)) return $"File {file.FileName} is not allowed.";
+                var validationError = ValidateFiles(files);
+                if (validationError != null)
+                    return ServiceResult<string>.Failure(validationError);
 
-                    var uploadFolder = Path.Combine(_env.WebRootPath, "Uploads", "certificates", userId);
-                    Directory.CreateDirectory(uploadFolder);
+                var newPaths = await UploadFilesAsync(files, userId);
+                education.CertificatePaths.AddRange(newPaths);
 
-                    var uniqueFileName = $"{educationId}_{Guid.NewGuid()}{extension}";
-                    var fullPath = Path.Combine(uploadFolder, uniqueFileName);
-
-                    using (var stream = new FileStream(fullPath, FileMode.Create))
-                    {
-                        await file.CopyToAsync(stream);
-                    }
-
-                    // Add to existing list
-                    education.CertificatePaths.Add($"/Uploads/certificates/{userId}/{uniqueFileName}");
-                }
-
-                await _context.SaveChangesAsync();
-                return "Certificates uploaded successfully.";
+                await _educationRepository.SaveChangesAsync();
+                return ServiceResult<string>.Success("Certificates uploaded successfully.");
             }
             catch (Exception ex)
             {
-                return ex.Message;
+                _logger.LogError(ex, "Error uploading certificates for education {EducationId}, user {UserId}", educationId, userId);
+                return ServiceResult<string>.Failure($"An error occurred while uploading certificates: {ex.Message}");
             }
         }
 
-        // Updated to require the specific URL of the certificate you want to delete
-        public async Task<string> DeleteCertificateAsync(string userId, int educationId, string certificateUrl)
+        public async Task<ServiceResult<string>> DeleteCertificateAsync(string userId, int educationId, string certificateUrl)
         {
             try
             {
-                var education = await _context.UserEducations
+                var education = await _educationRepository
                     .FirstOrDefaultAsync(e => e.EducationId == educationId && e.UserId == userId);
 
-                if (education == null) return "Education record not found.";
+                if (education == null)
+                    return ServiceResult<string>.Failure("Education record not found.");
+
                 if (education.CertificatePaths == null || !education.CertificatePaths.Contains(certificateUrl))
-                    return "Certificate not found on this record.";
+                    return ServiceResult<string>.Failure("Certificate not found on this record.");
 
-                // 1. Delete physical file
                 DeleteFileFromDisk(certificateUrl);
-
-                // 2. Remove from Database list
                 education.CertificatePaths.Remove(certificateUrl);
 
-                await _context.SaveChangesAsync();
-                return "Certificate deleted successfully.";
+                await _educationRepository.SaveChangesAsync();
+                return ServiceResult<string>.Success("Certificate deleted successfully.");
             }
             catch (Exception ex)
             {
-                return ex.Message;
+                _logger.LogError(ex, "Error deleting certificate from education {EducationId}, user {UserId}", educationId, userId);
+                return ServiceResult<string>.Failure($"An error occurred while deleting the certificate: {ex.Message}");
             }
         }
+        // helper methods
+        private static string? ValidateFiles(List<IFormFile> files)
+        {
+            foreach (var file in files)
+            {
+                if (file.Length > MaxFileSizeBytes)
+                    return $"File {file.FileName} exceeds 5 MB.";
 
+                var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+                if (!AllowedExtensions.Contains(extension))
+                    return $"File {file.FileName} is not a valid format. Allowed: {string.Join(", ", AllowedExtensions)}";
+            }
+            return null;
+        }
+
+        private async Task<List<string>> UploadFilesAsync(List<IFormFile> files, string userId)
+        {
+            var uploadFolder = Path.Combine(_env.WebRootPath, "Uploads", "certificates", userId);
+            Directory.CreateDirectory(uploadFolder);
+
+            var paths = new List<string>();
+            foreach (var file in files)
+            {
+                var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+                var uniqueFileName = $"{Guid.NewGuid()}{extension}";
+                var fullPath = Path.Combine(uploadFolder, uniqueFileName);
+
+                using (var stream = new FileStream(fullPath, FileMode.Create))
+                {
+                    await file.CopyToAsync(stream);
+                }
+                paths.Add($"/Uploads/certificates/{userId}/{uniqueFileName}");
+            }
+            return paths;
+        }
         private void DeleteFileFromDisk(string? relativePath)
         {
             if (string.IsNullOrEmpty(relativePath)) return;
@@ -273,7 +264,5 @@ namespace BLL.Services.EducationService
             if (File.Exists(fullPath))
                 File.Delete(fullPath);
         }
-
-
     }
 }

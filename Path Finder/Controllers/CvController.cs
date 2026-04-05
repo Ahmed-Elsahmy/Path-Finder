@@ -13,15 +13,16 @@ namespace Path_Finder.Controllers
     public class CvController : ControllerBase
     {
         private readonly ICvService _cvService;
-        public CvController(ICvService cvService) {
+        public CvController(ICvService cvService)
+        {
             _cvService = cvService;
         }
+
         private string? GetUserId()
         {
-            // Extracts the User ID from the currently logged in user's Token
-            var userIdClaim = User.FindFirstValue("uid");
-            return userIdClaim;
+            return User.FindFirstValue("uid");
         }
+
         [HttpPost("upload")]
         public async Task<IActionResult> UploadCv([FromForm] UploadCvRQ request)
         {
@@ -29,45 +30,72 @@ namespace Path_Finder.Controllers
                 return BadRequest("File is empty.");
 
             var userId = GetUserId();
-            var baseUrl = $"{Request.Scheme}://{Request.Host}";
+            if (userId is null) return Unauthorized();
 
+            var baseUrl = $"{Request.Scheme}://{Request.Host}";
             var result = await _cvService.UploadCvAsync(userId, request, baseUrl);
 
-            if (result == "CV Uploaded Successfully")
-                return Ok(new { Message = result });
+            if (!result.IsSuccess)
+                return BadRequest(new { Message = result.ErrorMessage });
 
-            return BadRequest(result);
+            return Ok(new { Message = result.Data });
         }
 
         [HttpGet("my-cvs")]
         public async Task<IActionResult> GetMyCvs()
         {
             var userId = GetUserId();
-            var cvs = await _cvService.GetUserCvsAsync(userId);
-            return Ok(cvs);
+            if (userId is null) return Unauthorized();
+
+            var result = await _cvService.GetUserCvsAsync(userId);
+
+            if (!result.IsSuccess)
+                return BadRequest(new { Message = result.ErrorMessage });
+
+            return Ok(result.Data);
         }
+
         [HttpPut("{cvId}/set-primary")]
         public async Task<IActionResult> SetPrimaryCv(int cvId)
         {
             var userId = GetUserId();
+            if (userId is null) return Unauthorized();
+
             var result = await _cvService.SetPrimaryCvAsync(userId, cvId);
 
-            if (result == "Primary CV updated.")
-                return Ok(new { Message = result });
+            if (!result.IsSuccess)
+                return BadRequest(new { Message = result.ErrorMessage });
 
-            return BadRequest(result);
+            return Ok(new { Message = result.Data });
         }
 
         [HttpDelete("{cvId}")]
         public async Task<IActionResult> DeleteCv(int cvId)
         {
             var userId = GetUserId();
+            if (userId is null) return Unauthorized();
+
             var result = await _cvService.DeleteCvAsync(userId, cvId);
 
-            if (result == "CV Deleted Successfully.")
-                return Ok(new { Message = result });
+            if (!result.IsSuccess)
+                return BadRequest(new { Message = result.ErrorMessage });
 
-            return BadRequest(result);
+            return Ok(new { Message = result.Data });
+        }
+        [HttpPost("compare")]
+        public async Task<IActionResult> CompareCvs(
+            [FromBody] CvComparisonRQ request,
+            CancellationToken cancellationToken)
+        {
+            var userId = GetUserId();
+            if (userId is null) return Unauthorized();
+
+            var result = await _cvService.CompareCvsAsync(userId, request, cancellationToken);
+
+            if (!result.IsSuccess)
+                return BadRequest(new { Message = result.ErrorMessage }); 
+
+            return Ok(result.Data);
         }
     }
 }

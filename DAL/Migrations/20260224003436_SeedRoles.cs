@@ -25,7 +25,7 @@ namespace DAL.Migrations
 
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.Sql("DELETE FROM [AspNetRoles]");
+            //migrationBuilder.Sql("DELETE FROM [AspNetRoles]");
         }
     }
 }

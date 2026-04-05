@@ -1,9 +1,3 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 namespace BLL.Dtos.CvDtos
 {
     public class CvRS
@@ -16,5 +10,8 @@ namespace BLL.Dtos.CvDtos
         public string ParsedContent { get; set; }
         public List<string> ExtractedSkills { get; set; }
         public List<string>? CVIssues { get; set; }
+        public int CVScore { get; set; }
+        public List<string>? SuggestedJobTitles { get; set; }
+        public List<string>? RecommendedSkills { get; set; }
     }
 }
