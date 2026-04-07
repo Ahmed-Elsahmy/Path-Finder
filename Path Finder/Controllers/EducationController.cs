@@ -56,8 +56,8 @@ namespace Path_Finder.Controllers
             return Ok(new { Message = result.Data });
         }
 
-        [HttpPatch("update/{educationId}")]
-        public async Task<IActionResult> UpdateEducation(int educationId, [FromBody] JsonPatchDocument<UpdateEducationRQ> patchDoc)
+        [HttpPut("update/{educationId}")]
+        public async Task<IActionResult> UpdateEducation(int educationId, [FromForm] UpdateEducationRQ patchDoc)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
@@ -65,7 +65,7 @@ namespace Path_Finder.Controllers
             var userId = GetUserId();
             if (userId is null) return Unauthorized();
 
-            var result = await _educationService.UpdateEducationAsync(userId, educationId, patchDoc);
+            var result = await _educationService.UpdateEducationAsync(userId, educationId, patchDoc,Request.Form);
 
             if (!result.IsSuccess)
                 return BadRequest(new { Message = result.ErrorMessage });

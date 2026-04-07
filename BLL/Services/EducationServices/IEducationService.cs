@@ -9,7 +9,7 @@ namespace BLL.Services.EducationServices
     {
         Task<ServiceResult<List<UserEducationRS>>> GetUserEducationAsync(string userId);
         Task<ServiceResult<string>> AddEducationAsync(string userId, EducationRQ request);
-        Task<ServiceResult<string>> UpdateEducationAsync(string userId, int educationId, JsonPatchDocument<UpdateEducationRQ> request);
+        Task<ServiceResult<string>> UpdateEducationAsync(string userId, int educationId, UpdateEducationRQ request, IFormCollection form);
         Task<ServiceResult<string>> DeleteEducationAsync(string userId, int educationId);
         Task<ServiceResult<string>> UploadCertificateAsync(string userId, int educationId, List<IFormFile> files);
         Task<ServiceResult<string>> DeleteCertificateAsync(string userId, int educationId, string certificateUrl);

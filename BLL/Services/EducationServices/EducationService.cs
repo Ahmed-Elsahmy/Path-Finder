@@ -92,7 +92,11 @@ namespace BLL.Services.EducationService
             }
         }
 
-        public async Task<ServiceResult<string>> UpdateEducationAsync(string userId, int educationId, JsonPatchDocument<UpdateEducationRQ> patchDoc)
+        public async Task<ServiceResult<string>> UpdateEducationAsync(
+      string userId,
+      int educationId,
+      UpdateEducationRQ request,
+      IFormCollection form)
         {
             try
             {
@@ -102,28 +106,48 @@ namespace BLL.Services.EducationService
                 if (education == null)
                     return ServiceResult<string>.Failure("Education record not found.");
 
-                var dto = new UpdateEducationRQ
+                // Institution
+                if (form.ContainsKey("Institution"))
                 {
-                    Institution = education.Institution,
-                    Degree = education.Degree,
-                    FieldOfStudy = education.FieldOfStudy,
-                    StartDate = education.StartDate,
-                    EndDate = education.EndDate
-                };
+                    education.Institution = string.IsNullOrWhiteSpace(request.Institution)
+                        ? null
+                        : request.Institution;
+                }
 
-                patchDoc.ApplyTo(dto);
+                // Degree
+                if (form.ContainsKey("Degree"))
+                {
+                    education.Degree = string.IsNullOrWhiteSpace(request.Degree)
+                        ? null
+                        : request.Degree;
+                }
 
-                // Step 3: Validate (VERY IMPORTANT)
-                if (dto.EndDate < dto.StartDate)
+                // FieldOfStudy
+                if (form.ContainsKey("FieldOfStudy"))
+                {
+                    education.FieldOfStudy = string.IsNullOrWhiteSpace(request.FieldOfStudy)
+                        ? null
+                        : request.FieldOfStudy;
+                }
+
+                // StartDate
+                if (form.ContainsKey("StartDate"))
+                {
+                    education.StartDate = request.StartDate;
+                }
+
+                // EndDate (allow null = delete)
+                if (form.ContainsKey("EndDate"))
+                {
+                    education.EndDate = request.EndDate;
+                }
+
+                // Validation
+                if (education.EndDate.HasValue && education.EndDate < education.StartDate)
                     return ServiceResult<string>.Failure("EndDate cannot be before StartDate");
-  
-                education.Institution = dto.Institution;
-                education.Degree = dto.Degree;
-                education.FieldOfStudy = dto.FieldOfStudy;
-                education.StartDate = dto.StartDate;
-                education.EndDate = dto.EndDate;
 
-                education.IsCurrent = education.EndDate >= DateTime.UtcNow;
+                // IsCurrent logic
+                education.IsCurrent = !education.EndDate.HasValue || education.EndDate >= DateTime.UtcNow;
 
                 await _educationRepository.SaveChangesAsync();
 

@@ -1,7 +1,7 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
-using System.Text.Json;
 
 namespace DAL.Models
 {
@@ -82,5 +82,7 @@ namespace DAL.Models
         public DbSet<Skill> Skills { get; set; }
         public DbSet<UserSkill> UserSkills { get; set; }
         public DbSet<UserEducation> UserEducations { get; set; }
+        public DbSet<UserProfile> UserProfiles { get; set; }
+        public DbSet<UserExperience> UserExperiences { get; set; }
     }
 }
