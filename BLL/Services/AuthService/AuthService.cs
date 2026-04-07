@@ -1,7 +1,10 @@
 ﻿using BLL.Dtos.AuthDtos;
+using BLL.Dtos.UserProfileDtos;
 using BLL.Services.EmailService;
+using BLL.Services.UserProfileServices;
 using DAL.Helper;
 using DAL.Models;
+using Google;
 using Google.Apis.Auth;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
@@ -21,17 +24,22 @@ namespace BLL.Services.AuthService
         private readonly JWT _jwt;
         private readonly IConfiguration _configuration;
         private readonly IEmailService _emailService;
+        private readonly IUserProfileService _userProfileService;
+        private readonly AppDbContext _context;
 
-        public AuthService(UserManager<User> userManager, RoleManager<IdentityRole> roleManager, IOptions<JWT> jwt, IConfiguration configuration, IEmailService emailService)
+        public AuthService(UserManager<User> userManager, RoleManager<IdentityRole> roleManager, IOptions<JWT> jwt, IConfiguration configuration, IEmailService emailService,IUserProfileService userProfileService,AppDbContext context)
         {
             _userManager = userManager;
             _roleManager = roleManager;
             _jwt = jwt.Value;
             _configuration = configuration;
             _emailService = emailService;
+            _userProfileService = userProfileService;
+            _context = context;
         }
         public async Task<AuthModel> RegisterAsync(RegisterRQ model)
         {
+            using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
                 if (await _userManager.FindByEmailAsync(model.Email) is not null)
@@ -39,6 +47,7 @@ namespace BLL.Services.AuthService
 
                 if (await _userManager.FindByNameAsync(model.Username) is not null)
                     return new AuthModel { Message = "Username is already registered!" };
+
                 var user = new User
                 {
                     UserName = model.Username,
@@ -49,24 +58,34 @@ namespace BLL.Services.AuthService
                     CreatedAt = DateTime.UtcNow,
                 };
 
-
-
-                await _userManager.AddToRoleAsync(user, "User");
-                var otp = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
-                var emailBody = $"<h1>Welcome to Path Finder!</h1><p>Your 6-digit email confirmation code is: <strong>{otp}</strong></p><p>Please use this code to verify your account.</p>";
-                await _emailService.SendEmailAsync(user.Email, "Path Finder : Confirm your Email", emailBody);
-                var jwtSecurityToken = await CreateJwtToken(user);
                 var result = await _userManager.CreateAsync(user, model.Password);
 
                 if (!result.Succeeded)
                 {
-                    var errors = string.Empty;
-
-                    foreach (var error in result.Errors)
-                        errors += $"{error.Description},";
-
+                    var errors = string.Join(",", result.Errors.Select(e => e.Description));
                     return new AuthModel { Message = errors };
                 }
+
+                await _userManager.AddToRoleAsync(user, "User");
+
+                var otp = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
+
+                var emailBody = $"<h1>Welcome to Path Finder!</h1><p>Your code: <strong>{otp}</strong></p>";
+
+                await _emailService.SendEmailAsync(user.Email, "Confirm Email", emailBody);
+
+                var jwtSecurityToken = await CreateJwtToken(user);
+
+                await _userProfileService.AddUserProfileAsync(user.Id, new UserProfileRQ
+                {
+                    UserName = user.UserName,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    PhoneNumber = user.PhoneNumber,
+                    UpdatedAt = DateTime.UtcNow
+                });
+                await transaction.CommitAsync();
+
                 return new AuthModel
                 {
                     Email = user.Email,
@@ -75,11 +94,12 @@ namespace BLL.Services.AuthService
                     Roles = new List<string> { "User" },
                     Token = new JwtSecurityTokenHandler().WriteToken(jwtSecurityToken),
                     Username = user.UserName,
-                    Message = "User registered successfully! Please check your email for the 6-digit confirmation code."
+                    Message = "User registered successfully!"
                 };
             }
             catch (Exception ex)
             {
+                await transaction.RollbackAsync();
                 return new AuthModel { Message = ex.Message };
             }
         }
@@ -205,6 +225,10 @@ namespace BLL.Services.AuthService
 
                 var jwtSecurityToken = await CreateJwtToken(user);
                 var rolesList = await _userManager.GetRolesAsync(user);
+                await _userProfileService.AddUserProfileAsync(user.Id, new UserProfileRQ
+                {
+                    UserName = user.UserName,
+                });
 
                 return new AuthModel
                 {

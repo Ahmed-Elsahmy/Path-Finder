@@ -6,6 +6,8 @@ using BLL.Services.EducationService;
 using BLL.Services.EducationServices;
 using BLL.Services.EmailService;
 using BLL.Services.SkillService;
+using BLL.Services.UserExperienceServices;
+using BLL.Services.UserProfileServices;
 using DAL.Helper;
 using DAL.Models;
 using DAL.Repository;
@@ -17,6 +19,7 @@ using Microsoft.OpenApi.Models;
 using Path_Finder.Middleware;
 using Serilog;
 using System.Text;
+using System.Text.Json.Serialization;
 
 namespace Path_Finder
 {
@@ -45,7 +48,11 @@ namespace Path_Finder
                 builder.Host.UseSerilog();
 
                 // Add services to the container.
-                builder.Services.AddControllers().AddNewtonsoftJson();
+                builder.Services.AddControllers()
+             .AddJsonOptions(options =>
+             {
+                 options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+             });
                 builder.Services.AddEndpointsApiExplorer();
                 builder.Services.AddSwaggerGen(options =>
                 {
@@ -97,6 +104,8 @@ namespace Path_Finder
                 builder.Services.AddScoped<ICvService, CvService>();
                 builder.Services.AddScoped<IEducationService, EducationService>();
                 builder.Services.AddScoped<IChatbotService, ChatbotService>();
+                builder.Services.AddScoped<IUserProfileService, UserProfileService>();
+                builder.Services.AddScoped<IUserExperienceService, UserExperienceService>();
 
                 // JWT Configuration
                 builder.Services.Configure<JWT>(builder.Configuration.GetSection("JWT"));
