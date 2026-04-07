@@ -41,7 +41,11 @@ namespace BLL.Services.UserProfileServices
         {
             try
             {
-                var profile = await _userprofileRepository.FirstOrDefaultAsync(x => x.UserId == userId);
+                var profile = await _userprofileRepository
+                 .FirstOrDefaultAsync(x => x.UserId == userId);
+
+                if (profile == null)
+                    return ServiceResult<UserProfileRS>.Failure("Profile not found");
                 var result = _mapper.Map<UserProfileRS>(profile);
                 return ServiceResult<UserProfileRS>.Success(result);
             }

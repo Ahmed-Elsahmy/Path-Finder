@@ -15,11 +15,9 @@ namespace DAL.Models
         [Required]
         public string UserName { get; set; }
         [StringLength(50)]
-        [Required]
-        public string FirstName { get; set; }
+        public string ?FirstName { get; set; }
         [StringLength(50)]
-        [Required]
-        public string LastName { get; set; }
+        public string ?LastName { get; set; }
         [StringLength(20)]
         public string ?PhoneNumber { get; set; }
         [StringLength(100)]
