@@ -225,11 +225,15 @@ namespace BLL.Services.AuthService
 
                 var jwtSecurityToken = await CreateJwtToken(user);
                 var rolesList = await _userManager.GetRolesAsync(user);
-                await _userProfileService.AddUserProfileAsync(user.Id, new UserProfileRQ
+                var profileResult = await _userProfileService.GetUserProfileAsync(user.Id);
+                if (!profileResult.IsSuccess) 
                 {
-                    UserName = user.UserName,
-                });
-
+                    await _userProfileService.AddUserProfileAsync(user.Id, new UserProfileRQ
+                    {
+                        UserName = user.UserName,
+                        UpdatedAt = DateTime.UtcNow
+                    });
+                }
                 return new AuthModel
                 {
                     Email = user.Email,
