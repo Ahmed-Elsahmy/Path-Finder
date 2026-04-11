@@ -16,5 +16,6 @@ namespace DAL.Models
         public  List<CV>? Cvs { get; set; }
         public List<UserSkill>? skills { get; set; }
         public List<UserEducation>? userEducations { get; set; }
+        public virtual ICollection<CourseProgress> CourseProgresses { get; set; } = new List<CourseProgress>();
     }
 }

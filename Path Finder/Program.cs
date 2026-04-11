@@ -1,6 +1,11 @@
 ﻿using BLL.Mapping;
 using BLL.Services.AuthService;
 using BLL.Services.ChatbotService;
+using BLL.Services.CourseCategoryService;
+using BLL.Services.CoursePlatformService;
+using BLL.Services.CoursePlatformServices;
+using BLL.Services.CourseProgressService;
+using BLL.Services.CourseService;
 using BLL.Services.CvService;
 using BLL.Services.EducationService;
 using BLL.Services.EducationServices;
@@ -91,13 +96,10 @@ namespace Path_Finder
                     .AddEntityFrameworkStores<AppDbContext>()
                     .AddDefaultTokenProviders();
 
-                // Repository Pattern
                 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
-                // AutoMapper
                 builder.Services.AddAutoMapper(typeof(MappingProfile).Assembly);
 
-                // Business Services
                 builder.Services.AddScoped<IAuthService, AuthService>();
                 builder.Services.AddScoped<IEmailService, EmailService>();
                 builder.Services.AddScoped<ISkillService, SkillService>();
@@ -106,7 +108,10 @@ namespace Path_Finder
                 builder.Services.AddScoped<IChatbotService, ChatbotService>();
                 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
                 builder.Services.AddScoped<IUserExperienceService, UserExperienceService>();
-
+                builder.Services.AddScoped<ICoursePlatformService, CoursePlatformService>();
+                builder.Services.AddScoped<ICourseService, CourseService>();
+                builder.Services.AddScoped<ICourseCategoryService, CourseCategoryService>();
+                builder.Services.AddScoped<ICourseProgressService, CourseProgressService>();
                 // JWT Configuration
                 builder.Services.Configure<JWT>(builder.Configuration.GetSection("JWT"));
 
@@ -176,7 +181,11 @@ namespace Path_Finder
                 app.UseAuthorization();
 
                 app.MapControllers();
-
+                using (var scope = app.Services.CreateScope())
+                {
+                    var services = scope.ServiceProvider;
+                    DbInitializer.SeedAsync(services).GetAwaiter().GetResult();
+                }
                 app.Run();
             }
             catch (Exception ex)

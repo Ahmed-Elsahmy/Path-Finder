@@ -25,6 +25,9 @@ namespace BLL.Services.CvService
         private readonly IMapper _mapper;
         private readonly ILogger<CvService> _logger;
 
+        private const string GeminiBaseUrl =
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+
         public CvService(
             IRepository<CV> cvRepository,
             IRepository<Skill> skillRepository,
@@ -44,7 +47,36 @@ namespace BLL.Services.CvService
             _mapper = mapper;
             _logger = logger;
         }
+        private async Task<HttpResponseMessage> PostToGeminiAsync(
+            object requestBody,
+            CancellationToken ct = default)
+        {
+            var apiKey = _config["Gemini:ApiKey"];
+            var client = _httpClientFactory.CreateClient("GeminiClient");
+            client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
 
+            var httpContent = new StringContent(
+                JsonSerializer.Serialize(requestBody),
+                Encoding.UTF8,
+                "application/json");
+
+            HttpResponseMessage response = null!;
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                response = await client.PostAsync(GeminiBaseUrl, httpContent, ct);
+
+                if (response.IsSuccessStatusCode) break;
+
+                if ((int)response.StatusCode == 503 && attempt < 3)
+                {
+                    _logger.LogWarning("Gemini 503 on attempt {Attempt}, retrying in 3s...", attempt);
+                    await Task.Delay(3000, ct);
+                }
+                else break;
+            }
+
+            return response;
+        }
         public async Task<ServiceResult<string>> UploadCvAsync(string userId, UploadCvRQ request, string baseUrl)
         {
             try
@@ -63,17 +95,15 @@ namespace BLL.Services.CvService
                 string filePath = Path.Combine(uploadsFolder, uniqueFileName);
 
                 using (var fileStream = new FileStream(filePath, FileMode.Create))
-                {
                     await request.File.CopyToAsync(fileStream);
-                }
 
                 if (request.IsPrimary)
                 {
                     var existingCvs = await _cvRepository.FindAsync(c => c.UserId == userId);
                     foreach (var existingCv in existingCvs) existingCv.IsPrimary = false;
-                    await _cvRepository.SaveChangesAsync(); // ✅ save before adding new CV
+                    await _cvRepository.SaveChangesAsync();
                 }
-                // Default values as lists
+
                 string parsedContent = "AI Parsing Failed or not a PDF";
                 List<string> extractedSkills = new List<string>();
                 List<string> cvIssues = new List<string>();
@@ -130,7 +160,6 @@ namespace BLL.Services.CvService
 
                 if (extractedSkills.Any())
                 {
-                    // Load all data once — avoids N+1 queries
                     var allGlobalSkills = await _skillRepository.GetAllAsync();
                     var userSkillIds = (await _userSkillRepository.FindAsync(us => us.UserId == userId))
                         .Select(us => us.SkillId)
@@ -140,7 +169,6 @@ namespace BLL.Services.CvService
                     {
                         var skillLower = skill.ToLower().Trim();
 
-                        // Smart match: exact, or one contains the other (e.g. "C++" matches "C++ Programming")
                         var globalskill = allGlobalSkills.FirstOrDefault(s =>
                         {
                             var globalLower = s.SkillName.ToLower().Trim();
@@ -153,22 +181,21 @@ namespace BLL.Services.CvService
                         {
                             globalskill = new Skill { SkillName = skill, Category = "Ai Extracted", IsTechnical = true };
                             await _skillRepository.AddAsync(globalskill);
-                            await _skillRepository.SaveChangesAsync(); // Need ID generated
-                            allGlobalSkills.Add(globalskill); // Keep in-memory list in sync
+                            await _skillRepository.SaveChangesAsync();
+                            allGlobalSkills.Add(globalskill);
                         }
 
                         if (!userSkillIds.Contains(globalskill.SkillId))
                         {
-                            var newUserSkill = new UserSkill
+                            await _userSkillRepository.AddAsync(new UserSkill
                             {
                                 UserId = userId,
                                 SkillId = globalskill.SkillId,
                                 ProficiencyLevel = "Not Specified",
                                 Source = "AI Extracted from CV",
                                 AcquiredDate = DateTime.UtcNow
-                            };
-                            await _userSkillRepository.AddAsync(newUserSkill);
-                            userSkillIds.Add(globalskill.SkillId); // Prevent duplicates within same batch
+                            });
+                            userSkillIds.Add(globalskill.SkillId);
                         }
                     }
                     await _userSkillRepository.SaveChangesAsync();
@@ -182,22 +209,18 @@ namespace BLL.Services.CvService
                 return ServiceResult<string>.Failure($"Error uploading CV: {ex.Message}");
             }
         }
-
         private async Task<CvAiResult> ExtractDataWithGeminiAsync(string cvText)
         {
             var emptyResult = new CvAiResult();
             try
             {
                 var apiKey = _config["Gemini:ApiKey"];
-
                 if (string.IsNullOrEmpty(apiKey) || apiKey == "YOUR_GEMINI_API_KEY_HERE")
                 {
                     emptyResult.ParsedContent = "API Error: Key Missing";
                     emptyResult.CVIssues.Add("Make sure Gemini:ApiKey is in appsettings.json or User Secrets");
                     return emptyResult;
                 }
-
-                var url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
                 var prompt = $@"
 Analyze the following CV/Resume thoroughly. Return a JSON object with these exact keys:
@@ -238,70 +261,65 @@ CV Text:
                     }
                 };
 
-                var client = _httpClientFactory.CreateClient("GeminiClient");
-                client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
-
-                var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-                var response = await client.PostAsync(url, content);
+                var response = await PostToGeminiAsync(requestBody);
                 var responseString = await response.Content.ReadAsStringAsync();
 
-                if (response.IsSuccessStatusCode)
+                if (!response.IsSuccessStatusCode)
                 {
-                    try
-                    {
-                        using var document = JsonDocument.Parse(responseString);
-                        var aiResponseText = document.RootElement
-                            .GetProperty("candidates")[0]
-                            .GetProperty("content")
-                            .GetProperty("parts")[0]
-                            .GetProperty("text").GetString();
-
-                        // responseMimeType guarantees clean JSON, but clean just in case
-                        aiResponseText = aiResponseText?.Replace("```json", "").Replace("```", "").Trim();
-
-                        using var aiDoc = JsonDocument.Parse(aiResponseText!);
-                        var root = aiDoc.RootElement;
-
-                        var result = new CvAiResult
-                        {
-                            ParsedContent = root.TryGetProperty("ParsedContent", out var pc)
-                                ? pc.GetString() ?? "Could not summarize" : "Could not summarize",
-
-                            CVScore = root.TryGetProperty("CVScore", out var scoreEl)
-                                ? scoreEl.TryGetInt32(out var score) ? score : 0 : 0,
-                        };
-
-                        if (root.TryGetProperty("ExtractedSkills", out var skillsEl) && skillsEl.ValueKind == JsonValueKind.Array)
-                            result.ExtractedSkills = skillsEl.EnumerateArray()
-                                .Select(s => s.GetString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
-
-                        if (root.TryGetProperty("CVIssues", out var issuesEl) && issuesEl.ValueKind == JsonValueKind.Array)
-                            result.CVIssues = issuesEl.EnumerateArray()
-                                .Select(s => s.GetString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
-
-                        if (root.TryGetProperty("SuggestedJobTitles", out var jobsEl) && jobsEl.ValueKind == JsonValueKind.Array)
-                            result.SuggestedJobTitles = jobsEl.EnumerateArray()
-                                .Select(s => s.GetString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
-
-                        if (root.TryGetProperty("RecommendedSkills", out var recEl) && recEl.ValueKind == JsonValueKind.Array)
-                            result.RecommendedSkills = recEl.EnumerateArray()
-                                .Select(s => s.GetString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
-
-                        return result;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to parse Gemini AI response for CV extraction");
-                        emptyResult.ParsedContent = "AI Format Error";
-                        emptyResult.CVIssues.Add($"Parsing failed: {ex.Message}");
-                        return emptyResult;
-                    }
+                    _logger.LogWarning("Gemini API returned error {StatusCode}: {Response}", response.StatusCode, responseString);
+                    emptyResult.ParsedContent = $"API Error ({response.StatusCode})";
+                    emptyResult.CVIssues.Add(responseString);
+                    return emptyResult;
                 }
 
-                _logger.LogWarning("Gemini API returned error {StatusCode}: {Response}", response.StatusCode, responseString);
-                emptyResult.ParsedContent = $"API Error ({response.StatusCode})";
-                emptyResult.CVIssues.Add(responseString);
-                return emptyResult;
+                try
+                {
+                    using var document = JsonDocument.Parse(responseString);
+                    var aiResponseText = document.RootElement
+                        .GetProperty("candidates")[0]
+                        .GetProperty("content")
+                        .GetProperty("parts")[0]
+                        .GetProperty("text").GetString();
+
+                    aiResponseText = aiResponseText?.Replace("```json", "").Replace("```", "").Trim();
+
+                    using var aiDoc = JsonDocument.Parse(aiResponseText!);
+                    var root = aiDoc.RootElement;
+
+                    var result = new CvAiResult
+                    {
+                        ParsedContent = root.TryGetProperty("ParsedContent", out var pc)
+                            ? pc.GetString() ?? "Could not summarize" : "Could not summarize",
+
+                        CVScore = root.TryGetProperty("CVScore", out var scoreEl)
+                            ? scoreEl.TryGetInt32(out var score) ? score : 0 : 0,
+                    };
+
+                    if (root.TryGetProperty("ExtractedSkills", out var skillsEl) && skillsEl.ValueKind == JsonValueKind.Array)
+                        result.ExtractedSkills = skillsEl.EnumerateArray()
+                            .Select(s => s.GetString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
+
+                    if (root.TryGetProperty("CVIssues", out var issuesEl) && issuesEl.ValueKind == JsonValueKind.Array)
+                        result.CVIssues = issuesEl.EnumerateArray()
+                            .Select(s => s.GetString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
+
+                    if (root.TryGetProperty("SuggestedJobTitles", out var jobsEl) && jobsEl.ValueKind == JsonValueKind.Array)
+                        result.SuggestedJobTitles = jobsEl.EnumerateArray()
+                            .Select(s => s.GetString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
+
+                    if (root.TryGetProperty("RecommendedSkills", out var recEl) && recEl.ValueKind == JsonValueKind.Array)
+                        result.RecommendedSkills = recEl.EnumerateArray()
+                            .Select(s => s.GetString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
+
+                    return result;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to parse Gemini AI response for CV extraction");
+                    emptyResult.ParsedContent = "AI Format Error";
+                    emptyResult.CVIssues.Add($"Parsing failed: {ex.Message}");
+                    return emptyResult;
+                }
             }
             catch (Exception ex)
             {
@@ -312,7 +330,6 @@ CV Text:
             }
         }
 
-        /// <summary>Structured result from CV AI analysis</summary>
         private class CvAiResult
         {
             public string ParsedContent { get; set; } = "AI Parsing Failed";
@@ -322,7 +339,6 @@ CV Text:
             public List<string> SuggestedJobTitles { get; set; } = new();
             public List<string> RecommendedSkills { get; set; } = new();
         }
-
         public async Task<ServiceResult<List<CvRS>>> GetUserCvsAsync(string userId)
         {
             try
@@ -337,7 +353,6 @@ CV Text:
                 return ServiceResult<List<CvRS>>.Failure("An error occurred while retrieving your CVs.");
             }
         }
-
         public async Task<ServiceResult<string>> SetPrimaryCvAsync(string userId, int cvId)
         {
             try
@@ -349,9 +364,7 @@ CV Text:
                     return ServiceResult<string>.Failure("CV not found.");
 
                 foreach (var cv in cvs)
-                {
                     cv.IsPrimary = (cv.CVId == cvId);
-                }
 
                 await _cvRepository.SaveChangesAsync();
                 return ServiceResult<string>.Success("Primary CV updated.");
@@ -362,7 +375,6 @@ CV Text:
                 return ServiceResult<string>.Failure($"Error setting primary CV: {ex.Message}");
             }
         }
-
         public async Task<ServiceResult<string>> DeleteCvAsync(string userId, int cvId)
         {
             try
@@ -371,7 +383,6 @@ CV Text:
                 if (cv == null)
                     return ServiceResult<string>.Failure("CV not found.");
 
-                // Delete physical file
                 var fileName = Path.GetFileName(cv.FileUrl);
                 var filePath = Path.Combine(_env.WebRootPath, "Uploads", "CVs", fileName);
                 if (File.Exists(filePath)) File.Delete(filePath);
@@ -417,15 +428,12 @@ CV Text:
                         "The following CVs could not be parsed: " +
                         string.Join(", ", unparsed.Select(c => c.FileName)));
 
-                // ✅ Now returns error message instead of null
-                var (aiResult, errorMessage) = await CompareWithGeminiAsync(
-                    selectedCvs, cancellationToken);
+                var (aiResult, errorMessage) = await CompareWithGeminiAsync(selectedCvs, cancellationToken);
 
                 if (aiResult == null)
                     return ServiceResult<CvComparisonRS>.Failure(
                         errorMessage ?? "AI comparison failed. Please try again.");
 
-                // Build common + unique skills
                 var allSkillSets = selectedCvs
                     .Select(c => new
                     {
@@ -435,7 +443,6 @@ CV Text:
                     })
                     .ToList();
 
-                // ✅ Guard against empty skill sets crashing Aggregate
                 List<string> commonSkills;
                 if (allSkillSets.All(x => x.Skills.Any()))
                 {
@@ -468,12 +475,9 @@ CV Text:
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error comparing CVs for user {UserId}", userId);
-                return ServiceResult<CvComparisonRS>.Failure(
-                    $"Unexpected error: {ex.Message}");
+                return ServiceResult<CvComparisonRS>.Failure($"Unexpected error: {ex.Message}");
             }
         }
-
-        // ✅ Returns (result, errorMessage) instead of just result?
         private async Task<(CvComparisonRS? Result, string? Error)> CompareWithGeminiAsync(
             List<CV> cvs,
             CancellationToken ct)
@@ -512,10 +516,7 @@ The JSON must have exactly these keys:
 
                 var requestBody = new
                 {
-                    contents = new[]
-                    {
-                new { parts = new[] { new { text = prompt } } }
-            },
+                    contents = new[] { new { parts = new[] { new { text = prompt } } } },
                     generationConfig = new
                     {
                         temperature = 0.2,
@@ -526,24 +527,15 @@ The JSON must have exactly these keys:
                     }
                 };
 
-                var url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
-                var client = _httpClientFactory.CreateClient("GeminiClient");
-                client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
-
-                var httpContent = new StringContent(
-                    JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-
-                var response = await client.PostAsync(url, httpContent, ct);
+                var response = await PostToGeminiAsync(requestBody, ct);
                 var raw = await response.Content.ReadAsStringAsync(ct);
 
-                // ✅ Expose the actual Gemini error
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.LogError("Gemini error {Status}: {Body}", response.StatusCode, raw);
                     return (null, $"Gemini API error ({response.StatusCode}): {raw}");
                 }
 
-                // ── Parse Gemini wrapper ──────────────────────────────────
                 using var doc = JsonDocument.Parse(raw);
                 var aiText = doc.RootElement
                     .GetProperty("candidates")[0]
@@ -555,14 +547,12 @@ The JSON must have exactly these keys:
                 if (string.IsNullOrWhiteSpace(aiText))
                     return (null, "Gemini returned an empty response.");
 
-                // ✅ Strip ALL possible markdown fences
                 aiText = aiText
                     .Replace("```json", "")
                     .Replace("```JSON", "")
                     .Replace("```", "")
                     .Trim();
 
-                // ── Parse AI JSON ─────────────────────────────────────────
                 try
                 {
                     var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
@@ -589,5 +579,4 @@ The JSON must have exactly these keys:
             }
         }
     }
-
 }
