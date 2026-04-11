@@ -105,10 +105,6 @@ RESPONSE STYLE
             _educationRepository = educationRepository;
         }
 
-        // ═══════════════════════════════════════════
-        // Feature 4 — Personalized Chatbot
-        // ═══════════════════════════════════════════
-
         public async Task<ServiceResult<string>> AskQuestionAsync(
             ChatRQ request,
             string userId,
@@ -166,10 +162,6 @@ RESPONSE STYLE
             }
         }
 
-        // ═══════════════════════════════════════════
-        // Feature 6 — Career Roadmap
-        // ═══════════════════════════════════════════
-
         public async Task<ServiceResult<string>> GenerateCareerRoadmapAsync(
             string userId,
             CareerRoadmapRQ request,
@@ -225,9 +217,6 @@ Be specific — no generic advice like 'learn programming basics'.
             }
         }
 
-        // ═══════════════════════════════════════════
-        // Feature 8 — Interview Prep
-        // ═══════════════════════════════════════════
 
         public async Task<ServiceResult<string>> GenerateInterviewPrepAsync(
             string userId,
@@ -293,12 +282,6 @@ Respond in the same language the job title is written in.
                     ServiceErrorCode.UpstreamServiceError);
             }
         }
-
-        // ═══════════════════════════════════════════
-        // Shared Helpers
-        // ═══════════════════════════════════════════
-
-        /// <summary>Calls Gemini API with system prompt and content (shared by all features)</summary>
         private async Task<ServiceResult<string>> CallGeminiAsync(
             string systemPrompt,
             List<object> contentsList,

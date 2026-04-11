@@ -19,7 +19,6 @@ namespace DAL.Models
         {
             base.OnModelCreating(modelBuilder);
 
-            // ✅ ValueComparer tells EF Core how to compare List<string> for change tracking
             var listComparer = new ValueComparer<List<string>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
@@ -33,7 +32,6 @@ namespace DAL.Models
                 c => c == null ? null : c.ToList()
             );
 
-            // ✅ ExtractedSkills — List<string>?
             modelBuilder.Entity<CV>()
                 .Property(c => c.ExtractedSkills)
                 .HasConversion(
@@ -44,7 +42,6 @@ namespace DAL.Models
                 .HasColumnType("nvarchar(max)")
                 .Metadata.SetValueComparer(nullableListComparer);
 
-            // ✅ CVIssues — List<string>?
             modelBuilder.Entity<CV>()
                 .Property(c => c.CVIssues)
                 .HasConversion(
@@ -55,7 +52,6 @@ namespace DAL.Models
                 .HasColumnType("nvarchar(max)")
                 .Metadata.SetValueComparer(nullableListComparer);
 
-            // ✅ SuggestedJobTitles — List<string>?
             modelBuilder.Entity<CV>()
                 .Property(c => c.SuggestedJobTitles)
                 .HasConversion(
@@ -66,7 +62,6 @@ namespace DAL.Models
                 .HasColumnType("nvarchar(max)")
                 .Metadata.SetValueComparer(nullableListComparer);
 
-            // ✅ RecommendedSkills — List<string>?
             modelBuilder.Entity<CV>()
                 .Property(c => c.RecommendedSkills)
                 .HasConversion(
@@ -84,5 +79,11 @@ namespace DAL.Models
         public DbSet<UserEducation> UserEducations { get; set; }
         public DbSet<UserProfile> UserProfiles { get; set; }
         public DbSet<UserExperience> UserExperiences { get; set; }
+        public DbSet<CoursePlatform> CoursePlatforms { get; set; }
+        public DbSet<Course> Courses { get; set; }
+        public DbSet<Category> Categories { get; set; }
+        public DbSet<SubCategory> SubCategories { get; set; }
+        public DbSet<CourseProgress> CourseProgresses { get; set; }
+        public DbSet<CourseSkill> CourseSkills { get; set; }
     }
 }

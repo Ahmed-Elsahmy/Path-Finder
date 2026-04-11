@@ -4,6 +4,7 @@ using DAL.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DAL.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260408083939_EditCourseNullableFeilds")]
+    partial class EditCourseNullableFeilds
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -75,24 +78,6 @@ namespace DAL.Migrations
                     b.ToTable("CVs");
                 });
 
-            modelBuilder.Entity("DAL.Models.Category", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Categories");
-                });
-
             modelBuilder.Entity("DAL.Models.Course", b =>
                 {
                     b.Property<int>("Id")
@@ -101,7 +86,7 @@ namespace DAL.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int?>("CategoryId")
+                    b.Property<int?>("Category")
                         .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedAt")
@@ -113,8 +98,8 @@ namespace DAL.Migrations
                     b.Property<string>("DifficultyLevel")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<decimal?>("DurationHours")
-                        .HasColumnType("decimal(18,2)");
+                    b.Property<int?>("DurationHours")
+                        .HasColumnType("int");
 
                     b.Property<string>("ExternalUrl")
                         .IsRequired()
@@ -142,22 +127,12 @@ namespace DAL.Migrations
                     b.Property<float?>("Rating")
                         .HasColumnType("real");
 
-                    b.Property<int?>("SubCategoryId")
-                        .HasColumnType("int");
-
                     b.Property<string>("ThumbnailUrl")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("TotalLessons")
-                        .HasColumnType("int");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("CategoryId");
-
                     b.HasIndex("PlatformId");
-
-                    b.HasIndex("SubCategoryId");
 
                     b.ToTable("Courses");
                 });
@@ -200,78 +175,6 @@ namespace DAL.Migrations
                     b.ToTable("CoursePlatforms");
                 });
 
-            modelBuilder.Entity("DAL.Models.CourseProgress", b =>
-                {
-                    b.Property<int>("ProgressId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ProgressId"));
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("CompletedLessons")
-                        .HasColumnType("int");
-
-                    b.Property<int>("CourseId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<double>("ProgressPercentage")
-                        .HasColumnType("float");
-
-                    b.Property<DateTime>("StartedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("ProgressId");
-
-                    b.HasIndex("CourseId");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("CourseProgresses");
-                });
-
-            modelBuilder.Entity("DAL.Models.CourseSkill", b =>
-                {
-                    b.Property<int>("CourseSkillId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("CourseSkillId"));
-
-                    b.Property<int>("CourseId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("SkillId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SkillLevel")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.HasKey("CourseSkillId");
-
-                    b.HasIndex("CourseId");
-
-                    b.HasIndex("SkillId");
-
-                    b.ToTable("CourseSkills");
-                });
-
             modelBuilder.Entity("DAL.Models.Skill", b =>
                 {
                     b.Property<int>("SkillId")
@@ -299,29 +202,6 @@ namespace DAL.Migrations
                     b.HasKey("SkillId");
 
                     b.ToTable("Skills");
-                });
-
-            modelBuilder.Entity("DAL.Models.SubCategory", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("CategoryId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CategoryId");
-
-                    b.ToTable("SubCategories");
                 });
 
             modelBuilder.Entity("DAL.Models.User", b =>
@@ -726,74 +606,13 @@ namespace DAL.Migrations
 
             modelBuilder.Entity("DAL.Models.Course", b =>
                 {
-                    b.HasOne("DAL.Models.Category", "Category")
-                        .WithMany()
-                        .HasForeignKey("CategoryId");
-
                     b.HasOne("DAL.Models.CoursePlatform", "Platform")
                         .WithMany("Courses")
                         .HasForeignKey("PlatformId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("DAL.Models.SubCategory", "SubCategory")
-                        .WithMany()
-                        .HasForeignKey("SubCategoryId");
-
-                    b.Navigation("Category");
-
                     b.Navigation("Platform");
-
-                    b.Navigation("SubCategory");
-                });
-
-            modelBuilder.Entity("DAL.Models.CourseProgress", b =>
-                {
-                    b.HasOne("DAL.Models.Course", "Course")
-                        .WithMany("CourseProgresses")
-                        .HasForeignKey("CourseId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("DAL.Models.User", "User")
-                        .WithMany("CourseProgresses")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Course");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("DAL.Models.CourseSkill", b =>
-                {
-                    b.HasOne("DAL.Models.Course", "Course")
-                        .WithMany("CourseSkills")
-                        .HasForeignKey("CourseId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("DAL.Models.Skill", "Skill")
-                        .WithMany()
-                        .HasForeignKey("SkillId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Course");
-
-                    b.Navigation("Skill");
-                });
-
-            modelBuilder.Entity("DAL.Models.SubCategory", b =>
-                {
-                    b.HasOne("DAL.Models.Category", "Category")
-                        .WithMany("SubCategories")
-                        .HasForeignKey("CategoryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Category");
                 });
 
             modelBuilder.Entity("DAL.Models.UserEducation", b =>
@@ -899,18 +718,6 @@ namespace DAL.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("DAL.Models.Category", b =>
-                {
-                    b.Navigation("SubCategories");
-                });
-
-            modelBuilder.Entity("DAL.Models.Course", b =>
-                {
-                    b.Navigation("CourseProgresses");
-
-                    b.Navigation("CourseSkills");
-                });
-
             modelBuilder.Entity("DAL.Models.CoursePlatform", b =>
                 {
                     b.Navigation("Courses");
@@ -918,8 +725,6 @@ namespace DAL.Migrations
 
             modelBuilder.Entity("DAL.Models.User", b =>
                 {
-                    b.Navigation("CourseProgresses");
-
                     b.Navigation("Cvs");
 
                     b.Navigation("skills");
