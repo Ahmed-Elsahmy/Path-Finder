@@ -1,5 +1,6 @@
 ﻿using BLL.Mapping;
 using BLL.Services.AuthService;
+using BLL.Services.CareerPathServices;
 using BLL.Services.ChatbotService;
 using BLL.Services.CourseCategoryService;
 using BLL.Services.CoursePlatformService;
@@ -11,6 +12,7 @@ using BLL.Services.EducationService;
 using BLL.Services.EducationServices;
 using BLL.Services.EmailService;
 using BLL.Services.SkillService;
+using BLL.Services.UserCarrerPathServices;
 using BLL.Services.UserExperienceServices;
 using BLL.Services.UserProfileServices;
 using DAL.Helper;
@@ -112,6 +114,9 @@ namespace Path_Finder
                 builder.Services.AddScoped<ICourseService, CourseService>();
                 builder.Services.AddScoped<ICourseCategoryService, CourseCategoryService>();
                 builder.Services.AddScoped<ICourseProgressService, CourseProgressService>();
+                builder.Services.AddScoped<ICareerPathService, CareerPathService>();
+                builder.Services.AddScoped<IUserCareerPathService, UserCareerPathService>();
+
                 // JWT Configuration
                 builder.Services.Configure<JWT>(builder.Configuration.GetSection("JWT"));
 

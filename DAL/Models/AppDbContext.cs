@@ -71,6 +71,18 @@ namespace DAL.Models
                 )
                 .HasColumnType("nvarchar(max)")
                 .Metadata.SetValueComparer(nullableListComparer);
+
+            modelBuilder.Entity<UserExperience>()
+               .Property(x => x.EmploymentType)
+                   .HasConversion<string>();
+
+            modelBuilder.Entity<CareerPath>()
+                .Property(x => x.DifficultyLevel)
+                    .HasConversion<string>();
+
+            modelBuilder.Entity<UserCareerPath>()
+                .Property(x => x.Status)
+                    .HasConversion<string>();
         }
 
         public DbSet<CV> CVs { get; set; }
@@ -85,5 +97,10 @@ namespace DAL.Models
         public DbSet<SubCategory> SubCategories { get; set; }
         public DbSet<CourseProgress> CourseProgresses { get; set; }
         public DbSet<CourseSkill> CourseSkills { get; set; }
+        public DbSet<CareerPath> CareerPaths { get; set; }
+        public DbSet<UserCareerPath> UserCareerPaths { get; set; }
+        public DbSet<Milestone> Milestones { get; set; }
+        public DbSet<Achievement> UserAchievements { get; set; }
+
     }
 }

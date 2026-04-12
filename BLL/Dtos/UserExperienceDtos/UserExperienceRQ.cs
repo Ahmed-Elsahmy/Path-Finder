@@ -22,6 +22,7 @@ namespace BLL.Dtos.UserExperienceDtos
         public DateTime? EndDate { get; set; }
         public bool IsCurrent { get; set; }
         [Required(ErrorMessage = "You Must Add The EmploymentType")]
+        [EnumDataType(typeof(EmploymentType), ErrorMessage = "Invalid Empluee Type.")]
         public EmploymentType ?EmploymentType { get; set; }
     }
 }

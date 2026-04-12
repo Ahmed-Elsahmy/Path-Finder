@@ -3,11 +3,14 @@ using BLL.Dtos.CategoryDtos;
 using BLL.Dtos.CourseDtos;
 using BLL.Dtos.CoursePlatformDtos;
 using BLL.Dtos.CourseProgressDtos;
+using BLL.Dtos.CareerPathDtos;
 using BLL.Dtos.CvDtos;
 using BLL.Dtos.EducationDtos;
 using BLL.Dtos.SkillDtos;
 using BLL.Dtos.UserExperienceDtos;
 using BLL.Dtos.UserProfileDtos;
+using BLL.Dtos.UserCarrerPathDtos;
+using DAL.Helper.Enums;
 using DAL.Models;
 
 namespace BLL.Mapping
@@ -36,6 +39,10 @@ namespace BLL.Mapping
                 .ForMember(dest => dest.CertificateUrls, opt => opt.MapFrom(src => src.CertificatePaths ?? new List<string>()));
 
 
+            // UserCareerPath -> UserCareerPathRS
+            CreateMap<UserCareerPath, UserCareerPathRS>()
+                .ForMember(dest => dest.CareerPathStatus, opt => opt.MapFrom(src => src.Status));
+
 
             // UserProfile -> UserProfileRS
             CreateMap<UserProfile, UserProfileRS>();
@@ -55,7 +62,7 @@ namespace BLL.Mapping
             // UserExperienceRQ -> UserExperience
             CreateMap<UserExperienceRQ, UserExperience>();
             // UpdateUserExperienceRQ -> UserExperience (only map non-null properties)
-            CreateMap<UpdateUserExperienceRQ, UserExperience>()  .ForAllMembers(opts =>  opts.Condition((src, dest, srcMember) => srcMember != null));
+            CreateMap<UpdateUserExperienceRQ, UserExperience>().ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
 
             // CoursePlatform -> CoursePlatformRS
@@ -63,7 +70,7 @@ namespace BLL.Mapping
             // CoursePlatformRQ -> CoursePlatform
             CreateMap<CoursePlatformRQ, CoursePlatform>();
             // UpdateCoursePlatformRQ -> CoursePlatform (only map non-null properties)
-            CreateMap<UpdateCoursePlatformRQ, CoursePlatform>()  .ForAllMembers(opts =>  opts.Condition((src, dest, srcMember) => srcMember != null));
+            CreateMap<UpdateCoursePlatformRQ, CoursePlatform>().ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
 
 
@@ -85,7 +92,7 @@ namespace BLL.Mapping
             CreateMap<Category, CategoryRS>();
             CreateMap<CategoryRQ, Category>();
             CreateMap<SubCategory, SubCategoryRS>();
-             CreateMap<SubCategoryRQ, SubCategory>();
+            CreateMap<SubCategoryRQ, SubCategory>();
 
 
             CreateMap<CourseProgress, CourseProgressRS>()
@@ -101,6 +108,53 @@ namespace BLL.Mapping
                 .ForMember(dest => dest.SkillName, opt => opt.MapFrom(src => src.Skill != null ? src.Skill.SkillName : ""))
                 .ForMember(dest => dest.SkillCategory, opt => opt.MapFrom(src => src.Skill != null ? src.Skill.Category : ""))
                 .ForMember(dest => dest.IsTechnical, opt => opt.MapFrom(src => src.Skill != null && src.Skill.IsTechnical));
+            // UpdateUserExperienceRQ -> UserExperience (only map non-null properties)
+            CreateMap<UpdateUserExperienceRQ, UserExperience>()
+    .ForAllMembers(opts =>
+        opts.Condition((src, dest, srcMember) => srcMember != null));
+
+            //CareerPathRq -> CarrerPath
+            CreateMap<CareerPathRQ, CareerPath>()
+                 .ForMember(dest => dest.PathName,
+                            opt => opt.MapFrom(src => src.CarrerPathName))
+                 .ForMember(dest => dest.EstimatedDurationMonths,
+                            opt => opt.MapFrom(src => src.DurationInMonths))
+
+                 .ForMember(dest => dest.CreatedAt,
+                            opt => opt.MapFrom(src => DateTime.UtcNow));
+
+            // UpdateCareerPathRQ -> CareerPath (only map non-null properties)
+
+            CreateMap<UpdateCareerPathRQ, CareerPath>()
+
+              .ForMember(dest => dest.PathName,
+                  opt => opt.MapFrom(src => src.CareerPathName))
+
+              .ForMember(dest => dest.EstimatedDurationMonths,
+                  opt => opt.MapFrom(src => src.DurationInMonths))
+
+              .ForAllMembers(opts =>
+                  opts.Condition((src, dest, srcMember) => srcMember != null));
+
+            CreateMap<CareerPath, CareerPathRS>()
+
+
+            .ForMember(dest => dest.Id,
+                opt => opt.MapFrom(src => src.CareerPathId))
+
+
+            .ForMember(dest => dest.Name,
+                opt => opt.MapFrom(src => src.PathName))
+
+
+            .ForMember(dest => dest.DurationInMonths,
+                opt => opt.MapFrom(src => src.EstimatedDurationMonths))
+
+            .ForMember(dest => dest.DifficultyLevel,
+                opt => opt.MapFrom(src =>
+                    src.DifficultyLevel.HasValue
+                        ? src.DifficultyLevel.ToString()
+                        : null));
         }
     }
 }
