@@ -12,28 +12,41 @@ export const useJobs = () => {
 
       const mockData = [
         {
-          id: 1,
-          position: "Junior Backend Developer",
-          company: "Tech Solutions",
+          jobId: 1,
+          jobTitle: "Backend .NET Developer",
+          companyName: "Tech Egypt Solutions",
           location: "Cairo (Remote)",
-          type: "Full-time",
-          salary: "15k - 20k",
+          jobType: "Full-time",
+          experienceLevel: "Entry Level",
+          description:
+            "We are looking for a passionate .NET developer to build scalable backend services. You will work with C#, SQL Server, and microservices architecture.",
+          salaryMin: "15,000",
+          salaryMax: "20,000",
+          matchPercentage: 92,
         },
         {
-          id: 2,
-          position: "Frontend React Engineer",
-          company: "Global Soft",
+          jobId: 2,
+          jobTitle: "Full Stack Engineer (React & C#)",
+          companyName: "PathFinder AI Startups",
           location: "Alexandria",
-          type: "Hybrid",
-          salary: "Negotiable",
+          jobType: "Full-time",
+          experienceLevel: "Junior",
+          description:
+            "Join our fast-growing AI startup! You will be responsible for developing seamless user interfaces in React and robust APIs in ASP.NET Core.",
+          matchPercentage: 85,
         },
         {
-          id: 3,
-          position: "C# .NET Intern",
-          company: "Digital Systems",
+          jobId: 3,
+          jobTitle: "SQL Database Administrator",
+          companyName: "Global Data Systems",
           location: "Port Said",
-          type: "Internship",
-          salary: "Paid",
+          jobType: "Part-time",
+          experienceLevel: "Entry Level",
+          description:
+            "Seeking a database enthusiast to maintain, optimize, and secure our enterprise databases. Strong knowledge of indexing and complex querying required.",
+          salaryMin: "8,000",
+          salaryMax: "12,000",
+          matchPercentage: 78,
         },
       ];
 
@@ -44,5 +57,5 @@ export const useJobs = () => {
     fetchMockJobs();
   }, []);
 
-  return { jobs, isLoading };
+  return { jobs, isLoading, error: null };
 };

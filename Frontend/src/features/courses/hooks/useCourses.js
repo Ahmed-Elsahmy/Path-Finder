@@ -8,33 +8,43 @@ export const useCourses = () => {
     const fetchMock = async () => {
       setIsLoading(true);
       await new Promise((r) => setTimeout(r, 800)); // محاكاة لودينج
+
       setCourses([
         {
-          id: 1,
-          title: "Mastering .NET 8 Web API",
-          instructor: "Dr. Ahmad",
-          level: "Beginner",
-          duration: "20h",
-          price: "Free",
-          image: "💻",
+          courseId: 1,
+          courseName: "Mastering ASP.NET Core Web API",
+          description:
+            "Build robust, highly scalable RESTful APIs using the latest .NET framework and Entity Framework Core.",
+          thumbnailUrl:
+            "https://images.unsplash.com/photo-1555066931-4365d14bab8c?ixlib=rb-4.0.3&auto=format&fit=crop&w=500&q=80",
+          isFree: true,
+          price: 0,
+          durationHours: 40,
+          rating: 4.9,
         },
         {
-          id: 2,
-          title: "React Architecture & Design",
-          instructor: "Eng. Sarah",
-          level: "Advanced",
-          duration: "15h",
-          price: "Free",
-          image: "⚛️",
+          courseId: 2,
+          courseName: "React & Modern JavaScript Architecture",
+          description:
+            "A complete guide to building production-ready front-end applications using React hooks and Tailwind CSS.",
+          thumbnailUrl:
+            "https://images.unsplash.com/photo-1633356122544-f134324a6cee?ixlib=rb-4.0.3&auto=format&fit=crop&w=500&q=80",
+          isFree: true,
+          price: 0,
+          durationHours: 32,
+          rating: 4.8,
         },
         {
-          id: 3,
-          title: "SQL Server for Architects",
-          instructor: "Mohamed Ali",
-          level: "Intermediate",
-          duration: "12h",
-          price: "Free",
-          image: "🗄️",
+          courseId: 3,
+          courseName: "SQL Server Design & Optimization",
+          description:
+            "Master database normalization, indexing, and writing highly optimized stored procedures.",
+          thumbnailUrl:
+            "https://images.unsplash.com/photo-1542831371-29b0f74f9713?ixlib=rb-4.0.3&auto=format&fit=crop&w=500&q=80",
+          isFree: true,
+          price: 0,
+          durationHours: 15,
+          rating: 4.7,
         },
       ]);
       setIsLoading(false);
@@ -42,5 +52,5 @@ export const useCourses = () => {
     fetchMock();
   }, []);
 
-  return { courses, isLoading };
+  return { courses, isLoading, error: null };
 };

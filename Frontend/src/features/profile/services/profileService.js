@@ -1,27 +1,32 @@
 import { apiClient } from "../../../core/network/apiClient.js";
 
 export const profileService = {
+  // جلب بيانات البروفايل
   getProfile: async () => {
-    // المسار الصحيح من Swagger: /api/UserProfile/my-profile
     const response = await apiClient.get("/UserProfile/my-profile");
     return response.data;
   },
 
-  // تحديث الملف الشخصي
-  updateProfile: async (profileData) => {
-    const response = await apiClient.put("/UserProfile/update", profileData);
-    return response.data;
-  },
+  // تحديث البروفايل ودعم رفع الملفات
+  updateProfile: async (profileData, profilePictureFile = null) => {
+    const formData = new FormData();
 
-  // جلب الخبرات التعليمية
-  getEducation: async () => {
-    const response = await apiClient.get("/Education/my-education");
-    return response.data;
-  },
+    // نستخدم PascalCase لتطابق الـ Model في ASP.NET
+    formData.append("FirstName", profileData.firstName || "");
+    formData.append("LastName", profileData.lastName || "");
+    formData.append("UserName", profileData.userName || "");
+    formData.append("PhoneNumber", profileData.phoneNumber || "");
+    formData.append("Bio", profileData.bio || "");
+    formData.append("Location", profileData.location || "");
 
-  // جلب الخبرات العملية
-  getExperience: async () => {
-    const response = await apiClient.get("/UserExperience/my-experiences");
+    if (profilePictureFile) {
+      // إرسال الملف الخام تحت مسمى ProfilePictureUrl
+      formData.append("ProfilePictureUrl", profilePictureFile);
+    }
+
+    const response = await apiClient.put("/UserProfile/update", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
     return response.data;
   },
 };

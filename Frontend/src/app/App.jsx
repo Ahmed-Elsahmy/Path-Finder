@@ -6,7 +6,8 @@ const App = () => {
   return (
     // استخدام BrowserRouter لتفعيل التنقل بين الصفحات بدون إعادة تحميل المتصفح
     <BrowserRouter>
-      <div className="min-h-screen bg-gray-50 text-gray-900 font-sans w-full">
+      {/* الطبقة الخارجية للتطبيق */}
+      <div className="min-h-screen bg-slate-50/30 text-gray-900 font-sans w-full selection:bg-primary selection:text-white">
         <AppRoutes />
       </div>
     </BrowserRouter>

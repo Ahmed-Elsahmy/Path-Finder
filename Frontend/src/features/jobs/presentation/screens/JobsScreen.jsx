@@ -36,8 +36,11 @@ const JobsScreen = () => {
 
       {/* شبكة عرض الوظائف */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-        {jobs.length > 0 ? (
-          jobs.map((job) => <JobCard key={job.jobId} job={job} />)
+        {jobs && jobs.length > 0 ? (
+          // تم إضافة index كـ fallback للـ key لضمان عدم ظهور تحذير في الـ Console
+          jobs.map((job, index) => (
+            <JobCard key={job.jobId || job.id || `job-${index}`} job={job} />
+          ))
         ) : (
           <div className="col-span-full text-center py-12 text-gray-500 bg-white rounded-2xl border border-gray-100">
             لا توجد وظائف متاحة في الوقت الحالي.

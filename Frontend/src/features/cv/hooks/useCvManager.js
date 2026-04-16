@@ -1,63 +1,109 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cvService } from "../services/cvService";
 
 export const useCvManager = () => {
-  const [currentCv, setCurrentCv] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [successMsg, setSuccessMsg] = useState(null);
+  const [cvList, setCvList] = useState([]);
+  const [file, setFile] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [statusMsg, setStatusMsg] = useState({ type: "", text: "" });
 
+  // جلب السير الذاتية من السيرفر
+  const fetchMyCvs = async () => {
+    try {
+      const response = await cvService.getMyCvs();
+      // استخراج البيانات حسب شكل الرد من الباك إند
+      setCvList(response.data?.data || response.data || []);
+    } catch (error) {
+      console.error("Error fetching CVs", error);
+    }
+  };
+
+  // يشتغل أول ما الصفحة تفتح
   useEffect(() => {
-    fetchCurrentCv();
+    fetchMyCvs();
   }, []);
 
-  const fetchCurrentCv = async () => {
+  // دوال الـ Drag & Drop
+  const onDragOver = useCallback((e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+  const onDragLeave = useCallback((e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+  const onDrop = useCallback((e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    validateAndSetFile(e.dataTransfer.files[0]);
+  }, []);
+
+  const onFileChange = (e) => validateAndSetFile(e.target.files[0]);
+
+  const validateAndSetFile = (selectedFile) => {
+    if (selectedFile && selectedFile.type === "application/pdf") {
+      setFile(selectedFile);
+      setStatusMsg({ type: "", text: "" });
+    } else {
+      setStatusMsg({ type: "error", text: "Please upload a valid PDF file." });
+    }
+  };
+
+  // تنفيذ العمليات مع السيرفر
+  const handleUpload = async () => {
+    if (!file) return;
     setIsLoading(true);
+    setStatusMsg({ type: "", text: "" });
+
     try {
-      const data = await cvService.getMyCv();
-      setCurrentCv(data.data || data);
-    } catch (err) {
-      // قد لا يكون هناك CV مرفوع مسبقاً، لذلك لا نعتبره خطأ حرجاً
-      console.log("No CV found or error fetching CV");
+      // نرفع الملف، ونجعله الأساسي افتراضياً لو دي أول مرة
+      const isPrimary = cvList.length === 0;
+      await cvService.uploadCv(file, isPrimary);
+      setStatusMsg({ type: "success", text: "CV uploaded successfully!" });
+      setFile(null); // تفريغ الملف بعد الرفع
+      await fetchMyCvs(); // تحديث القائمة فوراً
+    } catch (error) {
+      setStatusMsg({
+        type: "error",
+        text: error.response?.data?.message || "Failed to upload CV.",
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    // التأكد من أن الملف PDF
-    if (file.type !== "application/pdf") {
-      setError("يرجى رفع ملف بصيغة PDF فقط.");
-      return;
-    }
-
-    setIsUploading(true);
-    setError(null);
-    setSuccessMsg(null);
-
+  const handleDelete = async (cvId) => {
     try {
-      await cvService.uploadCv(file);
-      setSuccessMsg(
-        "تم رفع السيرة الذاتية بنجاح وجاري تحليلها بواسطة الذكاء الاصطناعي.",
-      );
-      await fetchCurrentCv(); // تحديث البيانات بعد الرفع
-    } catch (err) {
-      setError("حدث خطأ أثناء رفع السيرة الذاتية.");
-    } finally {
-      setIsUploading(false);
+      await cvService.deleteCv(cvId);
+      await fetchMyCvs(); // تحديث القائمة
+    } catch (error) {
+      console.error("Delete failed", error);
+    }
+  };
+
+  const handleSetPrimary = async (cvId) => {
+    try {
+      await cvService.setPrimary(cvId);
+      await fetchMyCvs(); // تحديث القائمة لتعكس التغيير
+    } catch (error) {
+      console.error("Set primary failed", error);
     }
   };
 
   return {
-    currentCv,
-    isUploading,
+    cvList,
+    file,
+    isDragging,
     isLoading,
-    error,
-    successMsg,
-    handleFileUpload,
+    statusMsg,
+    onDragOver,
+    onDragLeave,
+    onDrop,
+    onFileChange,
+    handleUpload,
+    handleDelete,
+    handleSetPrimary,
+    setFile,
   };
 };

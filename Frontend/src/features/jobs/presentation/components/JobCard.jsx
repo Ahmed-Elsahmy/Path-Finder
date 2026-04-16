@@ -38,7 +38,7 @@ const JobCard = ({ job }) => {
       <div className="mt-auto flex justify-between items-center border-t border-gray-100 pt-4">
         <div className="text-sm font-semibold text-gray-700">
           {job.salaryMin && job.salaryMax
-            ? `$${job.salaryMin} - $${job.salaryMax}`
+            ? `${job.salaryMin} - ${job.salaryMax}`
             : "Salary not specified"}
         </div>
         <Button

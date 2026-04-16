@@ -12,7 +12,8 @@ import VerificationScreen from "../features/auth/presentation/screens/Verificati
 import SetNewPasswordScreen from "../features/auth/presentation/screens/SetNewPasswordScreen.jsx";
 
 // --- المسارات المحمية (Private Screens) ---
-import CoursesScreen from "../features/courses/presentation/screens/CoursesScreen.jsx"; // koko
+import DashboardScreen from "../features/dashboard/presentation/screens/DashboardScreen.jsx"; // 👈 استيراد الصفحة العصرية الجديدة
+import CoursesScreen from "../features/courses/presentation/screens/CoursesScreen.jsx";
 import JobsScreen from "../features/jobs/presentation/screens/JobsScreen.jsx";
 import ProfileScreen from "../features/profile/presentation/screens/ProfileScreen.jsx";
 import CvManagerScreen from "../features/cv/presentation/screens/CvManagerScreen.jsx";
@@ -98,15 +99,8 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <DashboardLayout>
-              <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
-                <h1 className="text-3xl font-bold text-gray-800">
-                  Welcome to Path Finder
-                </h1>
-                <p className="text-gray-500 max-w-lg">
-                  Your journey begins here. Use the sidebar to explore courses,
-                  jobs, or update your CV.
-                </p>
-              </div>
+              {/* 💡 تم استبدال الكود القديم بصفحة الداشبورد العصرية */}
+              <DashboardScreen />
             </DashboardLayout>
           </ProtectedRoute>
         }

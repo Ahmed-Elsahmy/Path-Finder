@@ -35,8 +35,12 @@ const CoursesScreen = () => {
 
       {/* شبكة عرض الكورسات */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {courses.map((course) => (
-          <CourseCard key={course.courseId} course={course} />
+        {/* التعديل الوحيد هنا: إضافة index واستخدامه في الـ key */}
+        {courses.map((course, index) => (
+          <CourseCard
+            key={course.courseId || `course-${index}`}
+            course={course}
+          />
         ))}
       </div>
 
