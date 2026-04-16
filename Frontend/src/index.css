@@ -1,0 +1,25 @@
+/* استدعاء محرك Tailwind الجديد (الإصدار 4) */
+@import "tailwindcss";
+
+/* تعريف لوحة ألوان مشروع Path Finder مباشرة في الـ CSS */
+@theme {
+  --color-primary: #5b7cfa;
+  --color-primary-light: #8ba4f9;
+  --color-primary-dark: #4a6be0;
+  --color-primary-50: #f0f4ff;
+
+  --color-background: #f9fafb;
+  --color-background-paper: #ffffff;
+
+  --color-text-primary: #1f2937;
+  --color-text-secondary: #6b7280;
+  --color-text-hint: #9ca3af;
+}
+
+/* إعدادات الجسم الأساسية (Body) باستخدام متغيرات CSS القياسية بدلاً من @apply */
+body {
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
