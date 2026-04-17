@@ -5,7 +5,9 @@
         None,
         ValidationError,      // 400
         NotFound,             // 404
-        UpstreamServiceError  // 503
+        UpstreamServiceError,  // 503
+        Unauthorized           // 401
+
     }
 
     public class ServiceResult<T>

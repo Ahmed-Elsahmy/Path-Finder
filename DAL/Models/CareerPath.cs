@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -22,8 +23,15 @@ namespace DAL.Models
        public int ?EstimatedDurationMonths { get; set; }
         public string ?Prerequisites { get; set; }
         public string ?ExpectedOutcomes { get; set; }
+        public int TotalCourses { get; set; } = 1;
+        public int? CategoryId { get; set; }
+        [ForeignKey("CategoryId")]
+        public virtual Category Category { get; set; }
+        public int? SubCategoryId { get; set; }
+        [ForeignKey("SubCategoryId")]
+        public virtual SubCategory SubCategory { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
+        public ICollection<CareerPathCourse> CareerPathCourses { get; set; } = new List<CareerPathCourse>();
 
     }
 }

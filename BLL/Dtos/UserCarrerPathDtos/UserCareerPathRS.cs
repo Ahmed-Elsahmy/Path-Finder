@@ -15,6 +15,8 @@ namespace BLL.Dtos.UserCarrerPathDtos
         public string UserId { get; set; }
         public CareerPathStatus CareerPathStatus { get; set; }
         public DateTime? CompletedAt { get; set; }
+        public int ProgressPercentage { get; set; }
         public string? AIRecommendationReason { get; set; }
+        public int Score { get; set; }
     }
 }

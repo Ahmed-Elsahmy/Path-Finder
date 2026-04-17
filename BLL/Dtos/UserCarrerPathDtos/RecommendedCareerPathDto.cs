@@ -3,13 +3,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using DAL.Helper.Enums;
 
 namespace BLL.Dtos.UserCarrerPathDtos
 {
-    public class UserCareerPathRQ
+    public class RecommendedCareerPathDto
     {
         public int CareerPathId { get; set; }
-        public CareerPathStatus careerPathStatus { get; set; } = CareerPathStatus.InProgress;
+        public string Name { get; set; }
+        public string Description { get; set; }
+        public string Reason { get; set; }
     }
 }

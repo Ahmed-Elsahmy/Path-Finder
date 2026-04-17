@@ -99,8 +99,7 @@ namespace DAL.Models
         public DbSet<CourseSkill> CourseSkills { get; set; }
         public DbSet<CareerPath> CareerPaths { get; set; }
         public DbSet<UserCareerPath> UserCareerPaths { get; set; }
-        public DbSet<Milestone> Milestones { get; set; }
-        public DbSet<Achievement> UserAchievements { get; set; }
+        public DbSet<CareerPathCourse> CareerPathCourses { get; set; }
 
     }
 }

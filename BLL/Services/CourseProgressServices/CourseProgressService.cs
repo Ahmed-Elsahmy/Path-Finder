@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using BLL.Common;
 using BLL.Dtos.CourseProgressDtos;
+using DAL.Helper.Enums;
 using DAL.Models;
 using DAL.Repository;
 using Microsoft.EntityFrameworkCore;
@@ -15,6 +16,8 @@ namespace BLL.Services.CourseProgressService
         // 🟢 مستودعات المهارات لنظام المكافآت عند إتمام الكورس
         private readonly IRepository<CourseSkill> _courseSkillRepo;
         private readonly IRepository<UserSkill> _userSkillRepo;
+        private readonly IRepository<CareerPathCourse> _careerPathCourseRepo;
+        private readonly IRepository<UserCareerPath> _userCareerPathRepo;
 
         private readonly IMapper _mapper;
         private readonly ILogger<CourseProgressService> _logger;
@@ -23,6 +26,8 @@ namespace BLL.Services.CourseProgressService
             IRepository<CourseProgress> progressRepo,
             IRepository<Course> courseRepo,
             IRepository<CourseSkill> courseSkillRepo,
+            IRepository<CareerPathCourse> careerPathCourseRepo,
+            IRepository<UserCareerPath> userCareerPathRepo,
             IRepository<UserSkill> userSkillRepo,
             IMapper mapper,
             ILogger<CourseProgressService> logger)
@@ -33,6 +38,8 @@ namespace BLL.Services.CourseProgressService
             _userSkillRepo = userSkillRepo;
             _mapper = mapper;
             _logger = logger;
+            _careerPathCourseRepo = careerPathCourseRepo;
+            _userCareerPathRepo = userCareerPathRepo;
         }
 
         // ====================================================
@@ -166,6 +173,8 @@ namespace BLL.Services.CourseProgressService
                 // حفظ التقدم
                 _progressRepo.Update(progress);
                 await _progressRepo.SaveChangesAsync();
+                // 🧠 Update career path progress
+                await UpdateUserCareerPathProgressAsync(userId, progress.CourseId);
 
                 // 🟢 4. السحر: نقل المهارات للمستخدم إذا اكتمل الكورس الآن
                 if (justCompletedNow)
@@ -180,6 +189,62 @@ namespace BLL.Services.CourseProgressService
                 _logger.LogError(ex, "Error updating progress {ProgressId} for user {UserId}", progressId, userId);
                 return ServiceResult<string>.Failure("An error occurred while computing progress.", ServiceErrorCode.UpstreamServiceError);
             }
+        }
+
+        private async Task UpdateUserCareerPathProgressAsync(string userId, int courseId)
+        {
+            // 🔥 get all career paths that contain this course
+            var relatedPaths = await _careerPathCourseRepo.Query()
+                .Where(x => x.CourseId == courseId)
+                .Select(x => x.CareerPathId)
+                .Distinct()
+                .ToListAsync();
+
+            if (!relatedPaths.Any())
+                return;
+
+            foreach (var pathId in relatedPaths)
+            {
+                // 🔥 check if user enrolled
+                var userPath = await _userCareerPathRepo.FirstOrDefaultAsync(x =>
+                    x.UserId == userId && x.CareerPathId == pathId);
+
+                if (userPath == null)
+                    continue;
+
+                // 🔥 total courses in path
+                var totalCourses = await _careerPathCourseRepo.Query()
+                    .CountAsync(x => x.CareerPathId == pathId);
+
+                // 🔥 completed courses by user
+                var completedCourses = await _progressRepo.Query()
+                    .Where(p =>
+                        p.UserId == userId &&
+                        p.Status == "Completed" &&
+                        _careerPathCourseRepo.Query()
+                            .Where(c => c.CareerPathId == pathId)
+                            .Select(c => c.CourseId)
+                            .Contains(p.CourseId))
+                    .CountAsync();
+
+                var percentage = totalCourses == 0 ? 0 :
+                    (completedCourses * 100) / totalCourses;
+
+                userPath.ProgressPercentage = percentage;
+
+                // 🔥 auto complete path
+                if (percentage == 100)
+                {
+                    userPath.Status = CareerPathStatus.Completed;
+                    userPath.CompletedAt ??= DateTime.UtcNow;
+                }
+                else if (percentage > 0)
+                {
+                    userPath.Status = CareerPathStatus.InProgress;
+                }
+            }
+
+            await _userCareerPathRepo.SaveChangesAsync();
         }
 
         // ====================================================

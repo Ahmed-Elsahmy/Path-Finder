@@ -36,7 +36,10 @@ namespace DAL.Models
         public CoursePlatform Platform { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? LastUpdatedAt { get; set; }
+        public string ?BadgeUrl { get; set; }
         public virtual ICollection<CourseProgress> CourseProgresses { get; set; } = new List<CourseProgress>();
         public virtual ICollection<CourseSkill> CourseSkills { get; set; } = new List<CourseSkill>();
+        public ICollection<CareerPathCourse> CareerPathCourses { get; set; } = new List<CareerPathCourse>();
+
     }
 }

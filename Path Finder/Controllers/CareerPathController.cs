@@ -7,6 +7,7 @@ namespace API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class CareerPathController : ControllerBase
     {
         private readonly ICareerPathService _careerPathService;
@@ -38,7 +39,8 @@ namespace API.Controllers
             return Ok(result);
         }
 
-        [HttpPost]
+        [HttpPost("add new careerPath")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Create([FromBody] CareerPathRQ request)
         {
             if (!ModelState.IsValid)
@@ -51,7 +53,8 @@ namespace API.Controllers
 
             return Ok(result);
         }
-        [HttpPut("{id}")]
+        [HttpPut("updatecareerPath/{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Update(int id, [FromBody] UpdateCareerPathRQ request)
         {
             if (!ModelState.IsValid)
@@ -64,8 +67,8 @@ namespace API.Controllers
 
             return Ok(result);
         }
-
-        [HttpDelete("{id}")]
+        [HttpDelete("deletecareerPath/{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Delete(int id)
         {
             var result = await _careerPathService.DeleteCareerPathAsync(id);

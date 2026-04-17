@@ -1,5 +1,8 @@
-﻿using BLL.Mapping;
+﻿using System.Text;
+using System.Text.Json.Serialization;
+using BLL.Mapping;
 using BLL.Services.AuthService;
+using BLL.Services.CareerPathCourseServices;
 using BLL.Services.CareerPathServices;
 using BLL.Services.ChatbotService;
 using BLL.Services.CourseCategoryService;
@@ -25,8 +28,6 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Path_Finder.Middleware;
 using Serilog;
-using System.Text;
-using System.Text.Json.Serialization;
 
 namespace Path_Finder
 {
@@ -116,6 +117,7 @@ namespace Path_Finder
                 builder.Services.AddScoped<ICourseProgressService, CourseProgressService>();
                 builder.Services.AddScoped<ICareerPathService, CareerPathService>();
                 builder.Services.AddScoped<IUserCareerPathService, UserCareerPathService>();
+                builder.Services.AddScoped<ICareerPathCourseService, CareerPathCourseService>();
 
                 // JWT Configuration
                 builder.Services.Configure<JWT>(builder.Configuration.GetSection("JWT"));

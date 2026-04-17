@@ -47,23 +47,15 @@ namespace Path_Finder.Controllers
             return HandleResult(await _userCareerPathService.GetUserCareerPathsAsync(userId));
         }
 
-        [HttpGet("active")]
-        public async Task<IActionResult> GetActiveCareerPaths()
+        [HttpGet("GetCareerPaths")]
+        public async Task<IActionResult> GetCareerPaths([FromQuery] UserCareerPathFilter filter)
         {
             var userId = GetUserId();
             if (userId is null) return Unauthorized();
 
-            return HandleResult(await _userCareerPathService.GetActiveCareerPathsAsync(userId));
+            return HandleResult(await _userCareerPathService.GetCareerPathsAsync(userId,filter));
         }
 
-        [HttpGet("completed")]
-        public async Task<IActionResult> GetCompletedCareerPaths()
-        {
-            var userId = GetUserId();
-            if (userId is null) return Unauthorized();
-
-            return HandleResult(await _userCareerPathService.GetCompletedCareerPathsAsync(userId));
-        }
 
         [HttpGet("{userCareerPathId:int}")]
         public async Task<IActionResult> GetById(int userCareerPathId)
@@ -85,26 +77,6 @@ namespace Path_Finder.Controllers
             return HandleResult(await _userCareerPathService.EnrollInCareerPathAsync(userId, request));
         }
 
-        [HttpPut("update-status/{userCareerPathId:int}")]
-        public async Task<IActionResult> UpdateStatus(int userCareerPathId, [FromBody] UserCareerPathRQ request)
-        {
-            if (!ModelState.IsValid) return BadRequest(ModelState);
-
-            var userId = GetUserId();
-            if (userId is null) return Unauthorized();
-
-            return HandleResult(await _userCareerPathService.UpdateCareerPathStatusAsync(userId, userCareerPathId, request));
-        }
-
-        [HttpPost("complete/{userCareerPathId:int}")]
-        public async Task<IActionResult> Complete(int userCareerPathId)
-        {
-            var userId = GetUserId();
-            if (userId is null) return Unauthorized();
-
-            return HandleResult(await _userCareerPathService.CompleteCareerPathAsync(userId, userCareerPathId));
-        }
-
         [HttpDelete("unenroll/{userCareerPathId:int}")]
         public async Task<IActionResult> Unenroll(int userCareerPathId)
         {
@@ -121,15 +93,6 @@ namespace Path_Finder.Controllers
             if (userId is null) return Unauthorized();
 
             return HandleResult(await _userCareerPathService.IsUserEnrolledAsync(userId, careerPathId));
-        }
-
-        [HttpGet("progress/{careerPathId:int}")]
-        public async Task<IActionResult> GetProgress(int careerPathId)
-        {
-            var userId = GetUserId();
-            if (userId is null) return Unauthorized();
-
-            return HandleResult(await _userCareerPathService.GetCareerPathProgressAsync(userId, careerPathId));
         }
 
         [HttpGet("recommended")]

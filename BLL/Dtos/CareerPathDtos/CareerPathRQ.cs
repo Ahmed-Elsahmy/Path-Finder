@@ -12,7 +12,6 @@ namespace BLL.Dtos.CareerPathDtos
     {
         [Required(ErrorMessage = "Career Path Name is required.")]
         public string CarrerPathName { get; set; }
-
         public string ?Description { get; set; }
         [EnumDataType(typeof(DifficultyLevel), ErrorMessage = "Invalid difficulty level.")]
         public DifficultyLevel ?DifficultyLevel { get; set; }
@@ -20,7 +19,11 @@ namespace BLL.Dtos.CareerPathDtos
         public int? DurationInMonths { get; set; }
         [MaxLength(500, ErrorMessage = "Prerequisites cannot exceed 500 characters.")] 
         public string ?Prerequisites { get; set; }
+        [Range(0, 100, ErrorMessage = "Total courses must be between 0 and 100.")]
+        public int TotalCourses { get; set; } = 1;
         [MaxLength(1000, ErrorMessage = "Expected Outcomes cannot exceed 1000 characters.")]
         public string? ExpectedOutcomes { get; set; }
+        public int ?CategoryId { get; set; }
+        public int? SubCategoryId { get; set; }
     }
 }

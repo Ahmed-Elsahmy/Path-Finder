@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace DAL.Migrations
 {
     /// <inheritdoc />
-    public partial class AddCareerPathTables : Migration
+    public partial class addCareerPathTables : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -20,6 +20,12 @@ namespace DAL.Migrations
                 oldType: "int",
                 oldNullable: true);
 
+            migrationBuilder.AddColumn<string>(
+                name: "BadgeUrl",
+                table: "Courses",
+                type: "nvarchar(max)",
+                nullable: true);
+
             migrationBuilder.CreateTable(
                 name: "CareerPaths",
                 columns: table => new
@@ -32,34 +38,53 @@ namespace DAL.Migrations
                     EstimatedDurationMonths = table.Column<int>(type: "int", nullable: true),
                     Prerequisites = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     ExpectedOutcomes = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    TotalCourses = table.Column<int>(type: "int", nullable: false),
+                    CategoryId = table.Column<int>(type: "int", nullable: false),
+                    SubCategoryId = table.Column<int>(type: "int", nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_CareerPaths", x => x.CareerPathId);
+                    table.ForeignKey(
+                        name: "FK_CareerPaths_Categories_CategoryId",
+                        column: x => x.CategoryId,
+                        principalTable: "Categories",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_CareerPaths_SubCategories_SubCategoryId",
+                        column: x => x.SubCategoryId,
+                        principalTable: "SubCategories",
+                        principalColumn: "Id");
                 });
 
             migrationBuilder.CreateTable(
-                name: "Milestones",
+                name: "CareerPathCourses",
                 columns: table => new
                 {
-                    MilestoneId = table.Column<int>(type: "int", nullable: false)
+                    CareerPathCourseId = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
                     CareerPathId = table.Column<int>(type: "int", nullable: false),
-                    MilestoneName = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    Order = table.Column<int>(type: "int", nullable: false),
-                    CompletionCriteria = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    PointsAwarded = table.Column<int>(type: "int", nullable: false)
+                    CourseId = table.Column<int>(type: "int", nullable: false),
+                    OrderNumber = table.Column<int>(type: "int", nullable: false),
+                    IsRequired = table.Column<bool>(type: "bit", nullable: false),
+                    CompletionCriteria = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Milestones", x => x.MilestoneId);
+                    table.PrimaryKey("PK_CareerPathCourses", x => x.CareerPathCourseId);
                     table.ForeignKey(
-                        name: "FK_Milestones_CareerPaths_CareerPathId",
+                        name: "FK_CareerPathCourses_CareerPaths_CareerPathId",
                         column: x => x.CareerPathId,
                         principalTable: "CareerPaths",
                         principalColumn: "CareerPathId",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_CareerPathCourses_Courses_CourseId",
+                        column: x => x.CourseId,
+                        principalTable: "Courses",
+                        principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -74,6 +99,7 @@ namespace DAL.Migrations
                     EnrolledAt = table.Column<DateTime>(type: "datetime2", nullable: false),
                     Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     ProgressPercentage = table.Column<int>(type: "int", nullable: false),
+                    CompletedCourses = table.Column<int>(type: "int", nullable: false),
                     CompletedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
                     AIRecommendationReason = table.Column<string>(type: "nvarchar(max)", nullable: true)
                 },
@@ -94,48 +120,25 @@ namespace DAL.Migrations
                         onDelete: ReferentialAction.Cascade);
                 });
 
-            migrationBuilder.CreateTable(
-                name: "UserAchievements",
-                columns: table => new
-                {
-                    AchievementId = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    UserId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    MilestoneId = table.Column<int>(type: "int", nullable: false),
-                    AchievedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    BadgeUrl = table.Column<string>(type: "nvarchar(max)", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_UserAchievements", x => x.AchievementId);
-                    table.ForeignKey(
-                        name: "FK_UserAchievements_AspNetUsers_UserId",
-                        column: x => x.UserId,
-                        principalTable: "AspNetUsers",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_UserAchievements_Milestones_MilestoneId",
-                        column: x => x.MilestoneId,
-                        principalTable: "Milestones",
-                        principalColumn: "MilestoneId",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
             migrationBuilder.CreateIndex(
-                name: "IX_Milestones_CareerPathId",
-                table: "Milestones",
+                name: "IX_CareerPathCourses_CareerPathId",
+                table: "CareerPathCourses",
                 column: "CareerPathId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_UserAchievements_MilestoneId",
-                table: "UserAchievements",
-                column: "MilestoneId");
+                name: "IX_CareerPathCourses_CourseId",
+                table: "CareerPathCourses",
+                column: "CourseId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_UserAchievements_UserId",
-                table: "UserAchievements",
-                column: "UserId");
+                name: "IX_CareerPaths_CategoryId",
+                table: "CareerPaths",
+                column: "CategoryId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CareerPaths_SubCategoryId",
+                table: "CareerPaths",
+                column: "SubCategoryId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_UserCareerPaths_CareerPathId",
@@ -152,16 +155,17 @@ namespace DAL.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "UserAchievements");
+                name: "CareerPathCourses");
 
             migrationBuilder.DropTable(
                 name: "UserCareerPaths");
 
             migrationBuilder.DropTable(
-                name: "Milestones");
-
-            migrationBuilder.DropTable(
                 name: "CareerPaths");
+
+            migrationBuilder.DropColumn(
+                name: "BadgeUrl",
+                table: "Courses");
 
             migrationBuilder.AlterColumn<int>(
                 name: "EmploymentType",

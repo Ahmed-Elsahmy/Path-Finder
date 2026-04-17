@@ -95,5 +95,12 @@ namespace Path_Finder.Controllers
             return Ok(result);
         }
 
+        [HttpPost("resend-otp")]
+        public async Task<IActionResult> ResendOtp([FromBody] ResendOTPRQ model)
+        {
+            var result = await _authService.ResendOtpAsync(model);
+            return Ok(result);
+        }
+
     }
 }

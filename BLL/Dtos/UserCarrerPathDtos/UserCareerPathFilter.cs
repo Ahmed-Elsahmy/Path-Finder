@@ -7,9 +7,8 @@ using DAL.Helper.Enums;
 
 namespace BLL.Dtos.UserCarrerPathDtos
 {
-    public class UserCareerPathRQ
+    public class UserCareerPathFilter
     {
-        public int CareerPathId { get; set; }
-        public CareerPathStatus careerPathStatus { get; set; } = CareerPathStatus.InProgress;
+        public CareerPathStatus careerPathStatus { get; set; } = CareerPathStatus.InProgress;   
     }
 }

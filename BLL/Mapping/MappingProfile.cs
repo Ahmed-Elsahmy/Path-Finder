@@ -1,16 +1,16 @@
 ﻿using AutoMapper;
+using BLL.Dtos.CareerPathCourseDtos;
+using BLL.Dtos.CareerPathDtos;
 using BLL.Dtos.CategoryDtos;
 using BLL.Dtos.CourseDtos;
 using BLL.Dtos.CoursePlatformDtos;
 using BLL.Dtos.CourseProgressDtos;
-using BLL.Dtos.CareerPathDtos;
 using BLL.Dtos.CvDtos;
 using BLL.Dtos.EducationDtos;
 using BLL.Dtos.SkillDtos;
+using BLL.Dtos.UserCarrerPathDtos;
 using BLL.Dtos.UserExperienceDtos;
 using BLL.Dtos.UserProfileDtos;
-using BLL.Dtos.UserCarrerPathDtos;
-using DAL.Helper.Enums;
 using DAL.Models;
 
 namespace BLL.Mapping
@@ -155,6 +155,12 @@ namespace BLL.Mapping
                     src.DifficultyLevel.HasValue
                         ? src.DifficultyLevel.ToString()
                         : null));
+
+
+
+            CreateMap<CareerPathCourse, CareerPathCourseRS>()
+    .ForMember(dest => dest.CareerPathName, opt => opt.MapFrom(src => src.CareerPath.PathName))
+    .ForMember(dest => dest.CourseName, opt => opt.MapFrom(src => src.Course.Name));
         }
     }
 }

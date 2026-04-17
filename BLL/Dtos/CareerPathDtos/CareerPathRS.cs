@@ -17,5 +17,11 @@ namespace BLL.Dtos.CareerPathDtos
         public string Prerequisites {  get; set; }
         public string ExpectedOutcomes { get; set; }
         public DateTime CreatedAt { get; set; }
+        public int TotalCourses { get; set; }
+        public string CategoryName { get; set; }
+        public string SubCategoryName { get; set; }
+        public int CareerPathId { get; internal set; }
+        public string PathName { get; internal set; }
+        public object Courses { get; internal set; }
     }
 }

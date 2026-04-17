@@ -67,6 +67,7 @@ namespace BLL.Services.AuthService
                 }
 
                 await _userManager.AddToRoleAsync(user, "User");
+                await _userManager.UpdateSecurityStampAsync(user);
 
                 var otp = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
 
@@ -265,11 +266,13 @@ namespace BLL.Services.AuthService
             }
             try
             {
+                await _userManager.UpdateSecurityStampAsync(user);
                 var otp = await _userManager.GenerateTwoFactorTokenAsync(user, "Email"); // genterate Uniqe Code
                 // send confrimation mail to email address
                 var emailBody = $"<h1> Hello From Path Finder </h1> <h1>Reset Your Password</h1><p>Your 6-digit password reset code is: <strong>{otp}</strong></p><p>This code will expire shortly , Path Finder (Team).</p>";
 
                 await _emailService.SendEmailAsync(user.Email, "Path Finder : Your Password Reset Code", emailBody);
+                await _userManager.UpdateSecurityStampAsync(user);
 
                 return new AuthModel
                 {
@@ -352,6 +355,41 @@ namespace BLL.Services.AuthService
             {
                 return new AuthModel { Message = "An error occurred while confirming the email: " + ex.Message };
 
+            }
+        }
+
+        public async Task<AuthModel> ResendOtpAsync(ResendOTPRQ model)
+        {
+            var user = await _userManager.FindByEmailAsync(model.Email);
+
+            if (user == null)
+                return new AuthModel { Message = "User not found." };
+
+            if (user.EmailConfirmed)
+                return new AuthModel { Message = "Email already confirmed." };
+
+            try
+            {
+                await _userManager.UpdateSecurityStampAsync(user);
+                var otp = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
+
+                var emailBody = $"<h1>Path Finder</h1><p>Your new OTP code: <strong>{otp}</strong></p>";
+
+                await _emailService.SendEmailAsync(user.Email, "Resend OTP", emailBody);
+
+                return new AuthModel
+                {
+                    Message = "OTP has been resent successfully.",
+                    Email = user.Email,
+                    Username = user.UserName
+                };
+            }
+            catch (Exception ex)
+            {
+                return new AuthModel
+                {
+                    Message = "Error while resending OTP: " + ex.Message
+                };
             }
         }
     }
