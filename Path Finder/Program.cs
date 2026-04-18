@@ -145,21 +145,47 @@ namespace Path_Finder
                     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
                     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
                 })
-                .AddJwtBearer(o =>
-                {
-                    o.RequireHttpsMetadata = false;
-                    o.SaveToken = false;
-                    o.TokenValidationParameters = new TokenValidationParameters
-                    {
-                        ValidateIssuerSigningKey = true,
-                        ValidateIssuer = true,
-                        ValidateAudience = true,
-                        ValidateLifetime = true,
-                        ValidIssuer = builder.Configuration["JWT:Issuer"],
-                        ValidAudience = builder.Configuration["JWT:Audience"],
-                        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JWT:Key"]))
-                    };
-                });
+             .AddJwtBearer(o =>
+             {
+                 o.RequireHttpsMetadata = false;
+                 o.SaveToken = false;
+
+                 o.TokenValidationParameters = new TokenValidationParameters
+                 {
+                     ValidateIssuerSigningKey = true,
+                     ValidateIssuer = true,
+                     ValidateAudience = true,
+                     ValidateLifetime = true,
+                     ValidIssuer = builder.Configuration["JWT:Issuer"],
+                     ValidAudience = builder.Configuration["JWT:Audience"],
+                     IssuerSigningKey = new SymmetricSecurityKey(
+                         Encoding.UTF8.GetBytes(builder.Configuration["JWT:Key"]))
+                 };
+                 o.Events = new JwtBearerEvents
+                 {
+                     OnTokenValidated = async context =>
+                     {
+                         var userManager = context.HttpContext.RequestServices
+                             .GetRequiredService<UserManager<User>>();
+
+                         var userId = context.Principal.FindFirst("uid")?.Value;
+                         var tokenStamp = context.Principal.FindFirst("ss")?.Value;
+
+                         if (userId == null)
+                         {
+                             context.Fail("Unauthorized");
+                             return;
+                         }
+
+                         var user = await userManager.FindByIdAsync(userId);
+
+                         if (user == null || user.SecurityStamp != tokenStamp)
+                         {
+                             context.Fail("Token revoked");
+                         }
+                     }
+                 };
+             });
 
                 var app = builder.Build();
 

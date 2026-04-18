@@ -158,7 +158,8 @@ namespace BLL.Services.AuthService
                 new Claim(JwtRegisteredClaimNames.Sub, user.UserName),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
-                new Claim("uid", user.Id)
+                new Claim("uid", user.Id),
+                new Claim("ss", user.SecurityStamp ?? "")
             }
                 .Union(userClaims)
                 .Union(roleClaims);
@@ -391,6 +392,25 @@ namespace BLL.Services.AuthService
                     Message = "Error while resending OTP: " + ex.Message
                 };
             }
+        }
+        public async Task<AuthModel> LogoutAsync(string userId)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+
+            if (user == null)
+                return new AuthModel { Message = "User not found" };
+
+            await _userManager.UpdateSecurityStampAsync(user);
+            var rolesList = await _userManager.GetRolesAsync(user);
+
+            return new AuthModel
+            {
+                Message = "Logged out successfully",
+                Username=user.UserName,
+                Email=user.Email,
+                Roles=rolesList.ToList(),
+                ExpiresOn=DateTime.Now
+            };
         }
     }
 }

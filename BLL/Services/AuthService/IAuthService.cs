@@ -16,6 +16,7 @@ namespace BLL.Services.AuthService
         Task<AuthModel> ResetPasswordAsync(ResetPasswordRQ model);
         Task<AuthModel> ConfirmEmailAsync(ConfirmEmailRQ model);
         Task<AuthModel> ResendOtpAsync(ResendOTPRQ model);
+        Task<AuthModel> LogoutAsync(string userId);
 
     }
 }
