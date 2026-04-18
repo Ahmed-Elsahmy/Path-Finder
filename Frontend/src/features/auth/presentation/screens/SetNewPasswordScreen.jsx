@@ -8,42 +8,49 @@ const SetNewPasswordScreen = () => {
     useResetPassword();
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-gray-50">
-      <div className="w-full max-w-md bg-white rounded-2xl p-8 shadow-sm text-center">
-        <h1 className="text-2xl font-bold mb-2">Set new Password</h1>
-        <p className="text-sm text-gray-500 mb-8">
-          Create a strong password to protect your
-          <br />
-          account. Minimum 8 characters required.
-        </p>
+    <div className="flex items-center justify-center min-h-screen bg-slate-50 p-4">
+      <div className="w-full max-w-md bg-white rounded-[2.5rem] p-10 shadow-xl border border-gray-100 animate-fade-in">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-black text-gray-900 mb-2">
+            Set New Password
+          </h1>
+          <p className="text-gray-400 font-medium text-sm">
+            Please enter your new password below.
+          </p>
+        </div>
 
         {error && (
-          <div className="mb-4 text-sm text-red-500 bg-red-50 p-2 rounded-lg">
-            {error}
+          <div className="mb-6 p-4 bg-red-50 text-red-600 text-xs font-bold rounded-2xl border border-red-100 text-center">
+            ⚠️ {error}
           </div>
         )}
 
-        <form onSubmit={handleReset} className="space-y-4 text-left">
+        <form onSubmit={handleReset} className="space-y-5">
           <Input
-            name="newPassword"
+            label="New Password"
+            name="newPassword" // 💡 الاسم هنا ضروري يكون newPassword
             type="password"
-            placeholder="New Password"
             value={formData.newPassword}
             onChange={handleChange}
+            placeholder="••••••••"
           />
           <Input
-            name="confirmPassword"
+            label="Confirm New Password"
+            name="confirmNewPassword" // 💡 الاسم هنا ضروري يكون confirmNewPassword
             type="password"
-            placeholder="Confirm Password"
-            value={formData.confirmPassword}
+            value={formData.confirmNewPassword}
             onChange={handleChange}
+            placeholder="••••••••"
           />
 
-          <div className="pt-4">
-            <Button type="submit" isLoading={isLoading} fullWidth>
-              Save Password
-            </Button>
-          </div>
+          <Button
+            type="submit"
+            isLoading={isLoading}
+            fullWidth
+            className="py-4 mt-4 shadow-lg shadow-primary/20"
+          >
+            Reset Password
+          </Button>
         </form>
       </div>
     </div>

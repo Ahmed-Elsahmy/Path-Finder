@@ -1,10 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { authService } from "../services/authService";
-import { extractErrorMessage } from "../../../core/utils/validators";
 
 export const useSignUp = () => {
-  // الحقول مطابقة لشاشة Figma والـ RegisterRQ
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -29,19 +27,61 @@ export const useSignUp = () => {
     setIsLoading(true);
     setError(null);
 
-    // تحقق مبدئي بسيط قبل الإرسال
     if (formData.password !== formData.confirmPassword) {
-      setError("كلمات المرور غير متطابقة");
+      setError("كلمات المرور غير متطابقة.");
       setIsLoading(false);
       return;
     }
 
     try {
       await authService.register(formData);
-      // بعد نجاح التسجيل، نوجه المستخدم لصفحة التحقق أو تسجيل الدخول
+
+      // 💡 حفظ الإيميل في الذاكرة لنستخدمه في شاشة الـ OTP
+      sessionStorage.setItem("pending_email", formData.email);
+      // 💡 التأكيد على أن هذه عملية "تأكيد حساب" وليست "نسيان باسورد"
+      sessionStorage.setItem("is_password_reset", "false");
+
       navigate("/verify-otp");
     } catch (err) {
-      setError(extractErrorMessage(err));
+      let backendError =
+        err.response?.data?.message ||
+        err.response?.data ||
+        "حدث خطأ غير متوقع.";
+
+      // التعامل مع مصفوفة الأخطاء لو رجعت من الـ Identity
+      if (Array.isArray(err.response?.data)) {
+        backendError = err.response.data[0]?.description || backendError;
+      }
+
+      // تحويل الأخطاء المعقدة (غير أبجدي رقمي) لرسائل مفهومة للمستخدم
+      if (typeof backendError === "string") {
+        if (
+          backendError.includes("غير ابجدي رقمي") ||
+          backendError.includes("NonAlphanumeric")
+        ) {
+          setError(
+            "كلمة المرور ضعيفة: يجب أن تحتوي على رمز خاص واحد على الأقل (مثل @, #, $, %).",
+          );
+        } else if (
+          backendError.includes("Upper") ||
+          backendError.includes("كبير")
+        ) {
+          setError(
+            "كلمة المرور ضعيفة: يجب أن تحتوي على حرف إنجليزي كبير (A-Z).",
+          );
+        } else if (
+          backendError.includes("Digit") ||
+          backendError.includes("رقم")
+        ) {
+          setError(
+            "كلمة المرور ضعيفة: يجب أن تحتوي على رقم واحد على الأقل (0-9).",
+          );
+        } else {
+          setError(backendError); // عرض الخطأ كما هو إذا كان مختلفاً
+        }
+      } else {
+        setError("فشل التسجيل، تأكد من صحة البيانات.");
+      }
     } finally {
       setIsLoading(false);
     }

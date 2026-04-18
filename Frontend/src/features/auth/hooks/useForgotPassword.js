@@ -1,10 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { authService } from "../services/authService";
-import {
-  extractErrorMessage,
-  isValidEmail,
-} from "../../../core/utils/validators";
 
 export const useForgotPassword = () => {
   const [email, setEmail] = useState("");
@@ -12,29 +8,25 @@ export const useForgotPassword = () => {
   const [error, setError] = useState(null);
   const navigate = useNavigate();
 
-  const handleSendOTP = async (e) => {
+  const handleForgot = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
 
-    if (!isValidEmail(email)) {
-      setError("يرجى إدخال بريد إلكتروني صحيح");
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      // الاتصال بالباك إند لإرسال كود OTP
       await authService.forgotPassword({ email });
-      // حفظ الإيميل مؤقتاً لنستخدمه في شاشة التحقق
-      sessionStorage.setItem("reset_email", email);
+
+      // 💡 حفظ الإيميل وتحديد مسار استعادة كلمة المرور
+      sessionStorage.setItem("pending_email", email);
+      sessionStorage.setItem("is_password_reset", "true");
+
       navigate("/verify-otp");
     } catch (err) {
-      setError(extractErrorMessage(err));
+      setError("حدث خطأ. تأكد من أن البريد الإلكتروني مسجل لدينا.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  return { email, setEmail, isLoading, error, handleSendOTP };
+  return { email, setEmail, isLoading, error, handleForgot };
 };
