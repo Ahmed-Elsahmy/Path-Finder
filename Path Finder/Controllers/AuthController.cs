@@ -1,5 +1,6 @@
 ﻿using BLL.Dtos.AuthDtos;
 using BLL.Services.AuthService;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -91,6 +92,24 @@ namespace Path_Finder.Controllers
 
             if (result.Message != "Password has been reset successfully!")
                 return BadRequest(result.Message);
+
+            return Ok(result);
+        }
+
+        [HttpPost("resend-otp")]
+        public async Task<IActionResult> ResendOtp([FromBody] ResendOTPRQ model)
+        {
+            var result = await _authService.ResendOtpAsync(model);
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpPost("logout")]
+        public async Task<IActionResult> Logout()
+        {
+            var userId = User.FindFirst("uid")?.Value;
+
+            var result = await _authService.LogoutAsync(userId);
 
             return Ok(result);
         }

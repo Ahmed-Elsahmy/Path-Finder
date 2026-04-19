@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -14,6 +15,7 @@ namespace BLL.Dtos.UserExperienceDtos
         public string? Description { get; set; }
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
+        [EnumDataType(typeof(EmploymentType), ErrorMessage = "Invalid Empluee Type.")]
         public EmploymentType ?EmploymentType { get; set; }
     }
 }

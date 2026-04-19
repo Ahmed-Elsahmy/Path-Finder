@@ -37,5 +37,7 @@ namespace DAL.Repository
         public async Task SaveChangesAsync() => await _context.SaveChangesAsync();
 
         public IQueryable<T> Query() => _dbSet.AsQueryable();
+        public async Task AddRangeAsync(IEnumerable<T> entities)
+       => await _dbSet.AddRangeAsync(entities);
     }
 }

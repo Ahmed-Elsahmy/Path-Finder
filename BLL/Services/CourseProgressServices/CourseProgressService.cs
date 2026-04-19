@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using BLL.Common;
 using BLL.Dtos.CourseProgressDtos;
+using DAL.Helper.Enums;
 using DAL.Models;
 using DAL.Repository;
 using Microsoft.EntityFrameworkCore;
@@ -15,6 +16,8 @@ namespace BLL.Services.CourseProgressService
         // 🟢 مستودعات المهارات لنظام المكافآت عند إتمام الكورس
         private readonly IRepository<CourseSkill> _courseSkillRepo;
         private readonly IRepository<UserSkill> _userSkillRepo;
+        private readonly IRepository<CareerPathCourse> _careerPathCourseRepo;
+        private readonly IRepository<UserCareerPath> _userCareerPathRepo;
 
         private readonly IMapper _mapper;
         private readonly ILogger<CourseProgressService> _logger;
@@ -23,6 +26,8 @@ namespace BLL.Services.CourseProgressService
             IRepository<CourseProgress> progressRepo,
             IRepository<Course> courseRepo,
             IRepository<CourseSkill> courseSkillRepo,
+            IRepository<CareerPathCourse> careerPathCourseRepo,
+            IRepository<UserCareerPath> userCareerPathRepo,
             IRepository<UserSkill> userSkillRepo,
             IMapper mapper,
             ILogger<CourseProgressService> logger)
@@ -33,6 +38,8 @@ namespace BLL.Services.CourseProgressService
             _userSkillRepo = userSkillRepo;
             _mapper = mapper;
             _logger = logger;
+            _careerPathCourseRepo = careerPathCourseRepo;
+            _userCareerPathRepo = userCareerPathRepo;
         }
 
         // ====================================================
@@ -166,6 +173,8 @@ namespace BLL.Services.CourseProgressService
                 // حفظ التقدم
                 _progressRepo.Update(progress);
                 await _progressRepo.SaveChangesAsync();
+                // 🧠 Update career path progress
+                await UpdateUserCareerPathProgressAsync(userId, progress.CourseId);
 
                 // 🟢 4. السحر: نقل المهارات للمستخدم إذا اكتمل الكورس الآن
                 if (justCompletedNow)
@@ -180,6 +189,100 @@ namespace BLL.Services.CourseProgressService
                 _logger.LogError(ex, "Error updating progress {ProgressId} for user {UserId}", progressId, userId);
                 return ServiceResult<string>.Failure("An error occurred while computing progress.", ServiceErrorCode.UpstreamServiceError);
             }
+        }
+
+        private async Task UpdateUserCareerPathProgressAsync(string userId, int courseId)
+        {
+            // 🔥 get all career paths that contain this course
+            var relatedPaths = await _careerPathCourseRepo.Query()
+                .Where(x => x.CourseId == courseId)
+                .Select(x => x.CareerPathId)
+                .Distinct()
+                .ToListAsync();
+
+            if (!relatedPaths.Any())
+                return;
+
+            var userPaths = await _userCareerPathRepo.Query()
+                .Where(x =>
+                    x.UserId == userId &&
+                    relatedPaths.Contains(x.CareerPathId) &&
+                    x.Status != CareerPathStatus.Cancelled)
+                .ToListAsync();
+
+            if (!userPaths.Any())
+                return;
+
+            var pathCourses = await _careerPathCourseRepo.Query()
+                .Where(x => relatedPaths.Contains(x.CareerPathId))
+                .Select(x => new { x.CareerPathId, x.CourseId, x.IsRequired })
+                .ToListAsync();
+
+            var allCourseIds = pathCourses
+                .Select(x => x.CourseId)
+                .Distinct()
+                .ToList();
+
+            var userCourseProgress = await _progressRepo.Query()
+                .Where(p => p.UserId == userId && allCourseIds.Contains(p.CourseId))
+                .Select(p => new { p.CourseId, p.ProgressPercentage })
+                .ToListAsync();
+
+            var progressByCourseId = userCourseProgress
+                .GroupBy(x => x.CourseId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => Math.Clamp((int)Math.Round(g.Max(x => x.ProgressPercentage)), 0, 100));
+
+            foreach (var userPath in userPaths)
+            {
+                var requiredCourseIds = pathCourses
+                    .Where(x => x.CareerPathId == userPath.CareerPathId && x.IsRequired)
+                    .Select(x => x.CourseId)
+                    .Distinct()
+                    .ToList();
+
+                var courseIds = requiredCourseIds.Any()
+                    ? requiredCourseIds
+                    : pathCourses
+                        .Where(x => x.CareerPathId == userPath.CareerPathId)
+                        .Select(x => x.CourseId)
+                        .Distinct()
+                        .ToList();
+
+                if (!courseIds.Any())
+                {
+                    userPath.ProgressPercentage = 0;
+                    userPath.Status = CareerPathStatus.NotStarted;
+                    userPath.CompletedAt = null;
+                    continue;
+                }
+
+                var average = courseIds
+                    .Select(id => progressByCourseId.TryGetValue(id, out var p) ? p : 0)
+                    .Average();
+
+                var percentage = Math.Clamp((int)Math.Round(average), 0, 100);
+                userPath.ProgressPercentage = percentage;
+
+                if (percentage >= 100)
+                {
+                    userPath.Status = CareerPathStatus.Completed;
+                    userPath.CompletedAt ??= DateTime.UtcNow;
+                }
+                else if (percentage <= 0)
+                {
+                    userPath.Status = CareerPathStatus.NotStarted;
+                    userPath.CompletedAt = null;
+                }
+                else
+                {
+                    userPath.Status = CareerPathStatus.InProgress;
+                    userPath.CompletedAt = null;
+                }
+            }
+
+            await _userCareerPathRepo.SaveChangesAsync();
         }
 
         // ====================================================
@@ -232,8 +335,12 @@ namespace BLL.Services.CourseProgressService
             if (progress == null)
                 return ServiceResult<string>.Failure("Progress record not found.", ServiceErrorCode.NotFound);
 
+            var courseId = progress.CourseId;
             _progressRepo.Remove(progress);
             await _progressRepo.SaveChangesAsync();
+
+            // 🧠 Update career path progress (if this course belongs to any path)
+            await UpdateUserCareerPathProgressAsync(userId, courseId);
 
             return ServiceResult<string>.Success("Course dropped successfully.");
         }

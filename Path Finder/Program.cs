@@ -1,5 +1,9 @@
-﻿using BLL.Mapping;
+﻿using System.Text;
+using System.Text.Json.Serialization;
+using BLL.Mapping;
 using BLL.Services.AuthService;
+using BLL.Services.CareerPathCourseServices;
+using BLL.Services.CareerPathServices;
 using BLL.Services.ChatbotService;
 using BLL.Services.CourseCategoryService;
 using BLL.Services.CoursePlatformService;
@@ -11,6 +15,7 @@ using BLL.Services.EducationService;
 using BLL.Services.EducationServices;
 using BLL.Services.EmailService;
 using BLL.Services.SkillService;
+using BLL.Services.UserCarrerPathServices;
 using BLL.Services.UserExperienceServices;
 using BLL.Services.UserProfileServices;
 using DAL.Helper;
@@ -23,8 +28,6 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Path_Finder.Middleware;
 using Serilog;
-using System.Text;
-using System.Text.Json.Serialization;
 
 namespace Path_Finder
 {
@@ -112,6 +115,10 @@ namespace Path_Finder
                 builder.Services.AddScoped<ICourseService, CourseService>();
                 builder.Services.AddScoped<ICourseCategoryService, CourseCategoryService>();
                 builder.Services.AddScoped<ICourseProgressService, CourseProgressService>();
+                builder.Services.AddScoped<ICareerPathService, CareerPathService>();
+                builder.Services.AddScoped<IUserCareerPathService, UserCareerPathService>();
+                builder.Services.AddScoped<ICareerPathCourseService, CareerPathCourseService>();
+
                 // JWT Configuration
                 builder.Services.Configure<JWT>(builder.Configuration.GetSection("JWT"));
 
@@ -138,21 +145,47 @@ namespace Path_Finder
                     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
                     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
                 })
-                .AddJwtBearer(o =>
-                {
-                    o.RequireHttpsMetadata = false;
-                    o.SaveToken = false;
-                    o.TokenValidationParameters = new TokenValidationParameters
-                    {
-                        ValidateIssuerSigningKey = true,
-                        ValidateIssuer = true,
-                        ValidateAudience = true,
-                        ValidateLifetime = true,
-                        ValidIssuer = builder.Configuration["JWT:Issuer"],
-                        ValidAudience = builder.Configuration["JWT:Audience"],
-                        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JWT:Key"]))
-                    };
-                });
+             .AddJwtBearer(o =>
+             {
+                 o.RequireHttpsMetadata = false;
+                 o.SaveToken = false;
+
+                 o.TokenValidationParameters = new TokenValidationParameters
+                 {
+                     ValidateIssuerSigningKey = true,
+                     ValidateIssuer = true,
+                     ValidateAudience = true,
+                     ValidateLifetime = true,
+                     ValidIssuer = builder.Configuration["JWT:Issuer"],
+                     ValidAudience = builder.Configuration["JWT:Audience"],
+                     IssuerSigningKey = new SymmetricSecurityKey(
+                         Encoding.UTF8.GetBytes(builder.Configuration["JWT:Key"]))
+                 };
+                 o.Events = new JwtBearerEvents
+                 {
+                     OnTokenValidated = async context =>
+                     {
+                         var userManager = context.HttpContext.RequestServices
+                             .GetRequiredService<UserManager<User>>();
+
+                         var userId = context.Principal.FindFirst("uid")?.Value;
+                         var tokenStamp = context.Principal.FindFirst("ss")?.Value;
+
+                         if (userId == null)
+                         {
+                             context.Fail("Unauthorized");
+                             return;
+                         }
+
+                         var user = await userManager.FindByIdAsync(userId);
+
+                         if (user == null || user.SecurityStamp != tokenStamp)
+                         {
+                             context.Fail("Token revoked");
+                         }
+                     }
+                 };
+             });
 
                 var app = builder.Build();
 
