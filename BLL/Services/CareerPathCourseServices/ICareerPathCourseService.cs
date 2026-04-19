@@ -10,8 +10,8 @@ namespace BLL.Services.CareerPathCourseServices
 {
     public interface ICareerPathCourseService
     {
-        //Task<ServiceResult<string>> CreateAsync(CareerPathCourseRQ request);
-        //Task<ServiceResult<string>> DeleteAsync(int id);
+        Task<ServiceResult<CareerPathCourseRS>> CreateAsync(CareerPathCourseRQ request);
+        Task<ServiceResult<string>> DeleteAsync(int id);
         Task<ServiceResult<List<CareerPathCourseRS>>> GetByCareerPathIdAsync(int careerPathId);
     }
 }

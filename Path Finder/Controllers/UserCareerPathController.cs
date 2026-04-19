@@ -44,7 +44,9 @@ namespace Path_Finder.Controllers
             var userId = GetUserId();
             if (userId is null) return Unauthorized();
 
-            return HandleResult(await _userCareerPathService.GetUserCareerPathsAsync(userId));
+            var result = await _userCareerPathService.GetUserCareerPathsAsync(userId);
+            if (result.IsSuccess) return Ok(result.Data);
+            return HandleResult(result);
         }
 
         [HttpGet("GetCareerPaths")]
@@ -53,7 +55,9 @@ namespace Path_Finder.Controllers
             var userId = GetUserId();
             if (userId is null) return Unauthorized();
 
-            return HandleResult(await _userCareerPathService.GetCareerPathsAsync(userId,filter));
+            var result = await _userCareerPathService.GetCareerPathsAsync(userId, filter);
+            if (result.IsSuccess) return Ok(result.Data);
+            return HandleResult(result);
         }
 
 
@@ -63,7 +67,9 @@ namespace Path_Finder.Controllers
             var userId = GetUserId();
             if (userId is null) return Unauthorized();
 
-            return HandleResult(await _userCareerPathService.GetUserCareerPathByIdAsync(userId, userCareerPathId));
+            var result = await _userCareerPathService.GetUserCareerPathByIdAsync(userId, userCareerPathId);
+            if (result.IsSuccess) return Ok(result.Data);
+            return HandleResult(result);
         }
 
         [HttpPost("enroll")]
@@ -74,7 +80,9 @@ namespace Path_Finder.Controllers
             var userId = GetUserId();
             if (userId is null) return Unauthorized();
 
-            return HandleResult(await _userCareerPathService.EnrollInCareerPathAsync(userId, request));
+            var result = await _userCareerPathService.EnrollInCareerPathAsync(userId, request);
+            if (result.IsSuccess) return Ok(result.Data);
+            return HandleResult(result);
         }
 
         [HttpDelete("unenroll/{userCareerPathId:int}")]
@@ -83,7 +91,9 @@ namespace Path_Finder.Controllers
             var userId = GetUserId();
             if (userId is null) return Unauthorized();
 
-            return HandleResult(await _userCareerPathService.UnenrollFromCareerPathAsync(userId, userCareerPathId));
+            var result = await _userCareerPathService.UnenrollFromCareerPathAsync(userId, userCareerPathId);
+            if (result.IsSuccess) return Ok(new { Message = result.Data });
+            return HandleResult(result);
         }
 
         [HttpGet("is-enrolled/{careerPathId:int}")]
@@ -92,7 +102,9 @@ namespace Path_Finder.Controllers
             var userId = GetUserId();
             if (userId is null) return Unauthorized();
 
-            return HandleResult(await _userCareerPathService.IsUserEnrolledAsync(userId, careerPathId));
+            var result = await _userCareerPathService.IsUserEnrolledAsync(userId, careerPathId);
+            if (result.IsSuccess) return Ok(result.Data);
+            return HandleResult(result);
         }
 
         [HttpGet("recommended")]
@@ -101,8 +113,9 @@ namespace Path_Finder.Controllers
             var userId = GetUserId();
             if (userId is null) return Unauthorized();
 
-            return HandleResult(await _userCareerPathService.GetRecommendedCareerPathsAsync(userId));
+            var result = await _userCareerPathService.GetRecommendedCareerPathsAsync(userId);
+            if (result.IsSuccess) return Ok(result.Data);
+            return HandleResult(result);
         }
     }
 }
-

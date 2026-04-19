@@ -30,68 +30,116 @@ namespace BLL.Services.CareerPathCourseServices
             _logger = logger;
         }
 
-        //    public async Task<ServiceResult<string>> CreateAsync(CareerPathCourseRQ request)
-        //    {
-        //        try
-        //        {
-        //            // ✅ Validation
-        //            var careerPath = await _careerPathRepository.GetByIdAsync(request.CareerPathId);
-        //            if (careerPath == null)
-        //                return ServiceResult<string>.Failure("CareerPath not found");
+        public async Task<ServiceResult<CareerPathCourseRS>> CreateAsync(CareerPathCourseRQ request)
+        {
+            if (request == null)
+                return ServiceResult<CareerPathCourseRS>.Failure("Invalid request.", ServiceErrorCode.ValidationError);
 
-        //            var course = await _courseRepository.GetByIdAsync(request.CourseId);
-        //            if (course == null)
-        //                return ServiceResult<string>.Failure("Course not found");
+            if (request.CareerPathId <= 0 || request.CourseId <= 0 || request.OrderNumber <= 0)
+                return ServiceResult<CareerPathCourseRS>.Failure("Invalid request data.", ServiceErrorCode.ValidationError);
 
-        //            var exists = await _careerPathCourseRepository.FirstOrDefaultAsync(x =>
-        //                x.CareerPathId == request.CareerPathId &&
-        //                x.CourseId == request.CourseId);
+            try
+            {
+                var careerPathExists = await _careerPathRepository.AnyAsync(cp => cp.CareerPathId == request.CareerPathId);
+                if (!careerPathExists)
+                    return ServiceResult<CareerPathCourseRS>.Failure("Career path not found.", ServiceErrorCode.NotFound);
 
-        //            if (exists != null)
-        //                return ServiceResult<string>.Failure("Course already exists in this CareerPath");
+                var courseExists = await _courseRepository.AnyAsync(c => c.Id == request.CourseId);
+                if (!courseExists)
+                    return ServiceResult<CareerPathCourseRS>.Failure("Course not found.", ServiceErrorCode.NotFound);
 
-        //            var duplicateOrder = await _careerPathCourseRepository.FirstOrDefaultAsync(x =>
-        //x.CareerPathId == request.CareerPathId &&
-        //x.OrderNumber == request.OrderNumber);
+                var alreadyExists = await _careerPathCourseRepository.AnyAsync(x =>
+                    x.CareerPathId == request.CareerPathId && x.CourseId == request.CourseId);
 
-        //            if (duplicateOrder != null)
-        //                return ServiceResult<string>.Failure("OrderNumber already used in this CareerPath");
+                if (alreadyExists)
+                    return ServiceResult<CareerPathCourseRS>.Failure("Course already exists in this career path.", ServiceErrorCode.ValidationError);
 
-        //            // ✅ Mapping
-        //            var entity = _mapper.Map<CareerPathCourse>(request);
+                var orderAlreadyUsed = await _careerPathCourseRepository.AnyAsync(x =>
+                    x.CareerPathId == request.CareerPathId && x.OrderNumber == request.OrderNumber);
 
-        //            await _careerPathCourseRepository.AddAsync(entity);
-        //            await _careerPathCourseRepository.SaveChangesAsync();
+                if (orderAlreadyUsed)
+                    return ServiceResult<CareerPathCourseRS>.Failure("OrderNumber already used in this career path.", ServiceErrorCode.ValidationError);
 
-        //            return ServiceResult<string>.Success("Course added to CareerPath successfully");
-        //        }
-        //        catch (Exception ex)
-        //        {
-        //            _logger.LogError(ex, "Error creating CareerPathCourse");
-        //            return ServiceResult<string>.Failure($"Error: {ex.Message}");
-        //        }
-        //    }
+                var entity = new CareerPathCourse
+                {
+                    CareerPathId = request.CareerPathId,
+                    CourseId = request.CourseId,
+                    OrderNumber = request.OrderNumber,
+                    IsRequired = request.IsRequired,
+                    CompletionCriteria = request.CompletionCriteria
+                };
 
-        //    public async Task<ServiceResult<string>> DeleteAsync(int id)
-        //    {
-        //        try
-        //        {
-        //            var entity = await _careerPathCourseRepository.GetByIdAsync(id);
+                await _careerPathCourseRepository.AddAsync(entity);
+                await _careerPathCourseRepository.SaveChangesAsync();
 
-        //            if (entity == null)
-        //                return ServiceResult<string>.Failure("CareerPathCourse not found");
+                // Keep CareerPath.TotalCourses in sync
+                var total = await _careerPathCourseRepository.Query()
+                    .Where(x => x.CareerPathId == request.CareerPathId)
+                    .CountAsync();
 
-        //            _careerPathCourseRepository.Remove(entity);
-        //            await _careerPathCourseRepository.SaveChangesAsync();
+                var careerPath = await _careerPathRepository.GetByIdAsync(request.CareerPathId);
+                if (careerPath != null)
+                {
+                    careerPath.TotalCourses = total;
+                    await _careerPathRepository.SaveChangesAsync();
+                }
 
-        //            return ServiceResult<string>.Success("Deleted successfully");
-        //        }
-        //        catch (Exception ex)
-        //        {
-        //            _logger.LogError(ex, "Error deleting CareerPathCourse {Id}", id);
-        //            return ServiceResult<string>.Failure("Error while deleting");
-        //        }
-        //    }
+                var created = await _careerPathCourseRepository.Query()
+                    .Include(x => x.CareerPath)
+                    .Include(x => x.Course)
+                    .FirstOrDefaultAsync(x => x.CareerPathCourseId == entity.CareerPathCourseId);
+
+                if (created == null)
+                    return ServiceResult<CareerPathCourseRS>.Failure("Course added but could not be loaded.", ServiceErrorCode.UpstreamServiceError);
+
+                return ServiceResult<CareerPathCourseRS>.Success(_mapper.Map<CareerPathCourseRS>(created));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating CareerPathCourse");
+                return ServiceResult<CareerPathCourseRS>.Failure(
+                    "An error occurred while adding the course to the career path.",
+                    ServiceErrorCode.UpstreamServiceError);
+            }
+        }
+
+        public async Task<ServiceResult<string>> DeleteAsync(int id)
+        {
+            if (id <= 0)
+                return ServiceResult<string>.Failure("Invalid id.", ServiceErrorCode.ValidationError);
+
+            try
+            {
+                var entity = await _careerPathCourseRepository.GetByIdAsync(id);
+
+                if (entity == null)
+                    return ServiceResult<string>.Failure("Career path course not found.", ServiceErrorCode.NotFound);
+
+                var careerPathId = entity.CareerPathId;
+
+                _careerPathCourseRepository.Remove(entity);
+                await _careerPathCourseRepository.SaveChangesAsync();
+
+                // Keep CareerPath.TotalCourses in sync
+                var total = await _careerPathCourseRepository.Query()
+                    .Where(x => x.CareerPathId == careerPathId)
+                    .CountAsync();
+
+                var careerPath = await _careerPathRepository.GetByIdAsync(careerPathId);
+                if (careerPath != null)
+                {
+                    careerPath.TotalCourses = total;
+                    await _careerPathRepository.SaveChangesAsync();
+                }
+
+                return ServiceResult<string>.Success("Deleted successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting CareerPathCourse {Id}", id);
+                return ServiceResult<string>.Failure("Error while deleting", ServiceErrorCode.UpstreamServiceError);
+            }
+        }
 
         public async Task<ServiceResult<List<CareerPathCourseRS>>> GetByCareerPathIdAsync(int careerPathId)
         {
@@ -121,7 +169,7 @@ namespace BLL.Services.CareerPathCourseServices
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error retrieving CareerPathCourses for CareerPath {Id}", careerPathId);
-                return ServiceResult<List<CareerPathCourseRS>>.Failure("Error retrieving data");
+                return ServiceResult<List<CareerPathCourseRS>>.Failure("Error retrieving data", ServiceErrorCode.UpstreamServiceError);
             }
         }
     }

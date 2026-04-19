@@ -203,44 +203,82 @@ namespace BLL.Services.CourseProgressService
             if (!relatedPaths.Any())
                 return;
 
-            foreach (var pathId in relatedPaths)
+            var userPaths = await _userCareerPathRepo.Query()
+                .Where(x =>
+                    x.UserId == userId &&
+                    relatedPaths.Contains(x.CareerPathId) &&
+                    x.Status != CareerPathStatus.Cancelled)
+                .ToListAsync();
+
+            if (!userPaths.Any())
+                return;
+
+            var pathCourses = await _careerPathCourseRepo.Query()
+                .Where(x => relatedPaths.Contains(x.CareerPathId))
+                .Select(x => new { x.CareerPathId, x.CourseId, x.IsRequired })
+                .ToListAsync();
+
+            var allCourseIds = pathCourses
+                .Select(x => x.CourseId)
+                .Distinct()
+                .ToList();
+
+            var userCourseProgress = await _progressRepo.Query()
+                .Where(p => p.UserId == userId && allCourseIds.Contains(p.CourseId))
+                .Select(p => new { p.CourseId, p.ProgressPercentage })
+                .ToListAsync();
+
+            var progressByCourseId = userCourseProgress
+                .GroupBy(x => x.CourseId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => Math.Clamp((int)Math.Round(g.Max(x => x.ProgressPercentage)), 0, 100));
+
+            foreach (var userPath in userPaths)
             {
-                // 🔥 check if user enrolled
-                var userPath = await _userCareerPathRepo.FirstOrDefaultAsync(x =>
-                    x.UserId == userId && x.CareerPathId == pathId);
+                var requiredCourseIds = pathCourses
+                    .Where(x => x.CareerPathId == userPath.CareerPathId && x.IsRequired)
+                    .Select(x => x.CourseId)
+                    .Distinct()
+                    .ToList();
 
-                if (userPath == null)
+                var courseIds = requiredCourseIds.Any()
+                    ? requiredCourseIds
+                    : pathCourses
+                        .Where(x => x.CareerPathId == userPath.CareerPathId)
+                        .Select(x => x.CourseId)
+                        .Distinct()
+                        .ToList();
+
+                if (!courseIds.Any())
+                {
+                    userPath.ProgressPercentage = 0;
+                    userPath.Status = CareerPathStatus.NotStarted;
+                    userPath.CompletedAt = null;
                     continue;
+                }
 
-                // 🔥 total courses in path
-                var totalCourses = await _careerPathCourseRepo.Query()
-                    .CountAsync(x => x.CareerPathId == pathId);
+                var average = courseIds
+                    .Select(id => progressByCourseId.TryGetValue(id, out var p) ? p : 0)
+                    .Average();
 
-                // 🔥 completed courses by user
-                var completedCourses = await _progressRepo.Query()
-                    .Where(p =>
-                        p.UserId == userId &&
-                        p.Status == "Completed" &&
-                        _careerPathCourseRepo.Query()
-                            .Where(c => c.CareerPathId == pathId)
-                            .Select(c => c.CourseId)
-                            .Contains(p.CourseId))
-                    .CountAsync();
-
-                var percentage = totalCourses == 0 ? 0 :
-                    (completedCourses * 100) / totalCourses;
-
+                var percentage = Math.Clamp((int)Math.Round(average), 0, 100);
                 userPath.ProgressPercentage = percentage;
 
-                // 🔥 auto complete path
-                if (percentage == 100)
+                if (percentage >= 100)
                 {
                     userPath.Status = CareerPathStatus.Completed;
                     userPath.CompletedAt ??= DateTime.UtcNow;
                 }
-                else if (percentage > 0)
+                else if (percentage <= 0)
+                {
+                    userPath.Status = CareerPathStatus.NotStarted;
+                    userPath.CompletedAt = null;
+                }
+                else
                 {
                     userPath.Status = CareerPathStatus.InProgress;
+                    userPath.CompletedAt = null;
                 }
             }
 
@@ -297,8 +335,12 @@ namespace BLL.Services.CourseProgressService
             if (progress == null)
                 return ServiceResult<string>.Failure("Progress record not found.", ServiceErrorCode.NotFound);
 
+            var courseId = progress.CourseId;
             _progressRepo.Remove(progress);
             await _progressRepo.SaveChangesAsync();
+
+            // 🧠 Update career path progress (if this course belongs to any path)
+            await UpdateUserCareerPathProgressAsync(userId, courseId);
 
             return ServiceResult<string>.Success("Course dropped successfully.");
         }

@@ -1,8 +1,6 @@
-﻿using DAL.Models; // 👈 تأكد من إضافة هذا الـ using
+﻿using DAL.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
-using System;
-using System.Threading.Tasks;
 
 public static class DbInitializer
 {
@@ -29,8 +27,8 @@ public static class DbInitializer
                 UserName = "Admin1",
                 Email = adminEmail,
                 EmailConfirmed = true,
-                FirstName = "System", 
-                LastName = "Admin"    
+                FirstName = "System",
+                LastName = "Admin"
             };
 
             var result = await userManager.CreateAsync(user, adminPassword);

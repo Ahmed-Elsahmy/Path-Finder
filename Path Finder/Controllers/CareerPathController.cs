@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using BLL.Dtos.CareerPathDtos;
+using BLL.Common;
 using BLL.Services.CareerPathServices;
 using Microsoft.AspNetCore.Authorization;
 
@@ -17,15 +18,27 @@ namespace API.Controllers
             _careerPathService = careerPathService;
         }
 
+        private IActionResult HandleResult<T>(ServiceResult<T> result)
+        {
+            if (result.IsSuccess)
+                return Ok(new { Data = result.Data, Message = result.Data as string });
+
+            return result.ErrorCode switch
+            {
+                ServiceErrorCode.NotFound => NotFound(new { Message = result.ErrorMessage }),
+                ServiceErrorCode.UpstreamServiceError => StatusCode(503, new { Message = result.ErrorMessage }),
+                ServiceErrorCode.ValidationError => BadRequest(new { Message = result.ErrorMessage }),
+                _ => BadRequest(new { Message = result.ErrorMessage })
+            };
+        }
+
         [HttpGet]
         public async Task<IActionResult> GetAll()
         {
             var result = await _careerPathService.GetAllCareerPathsAsync();
 
-            if (!result.IsSuccess)
-                return BadRequest(result);
-
-            return Ok(result);
+            if (result.IsSuccess) return Ok(result.Data);
+            return HandleResult(result);
         }
 
         [HttpGet("{id}")]
@@ -33,10 +46,8 @@ namespace API.Controllers
         {
             var result = await _careerPathService.GetCareerPathByIdAsync(id);
 
-            if (!result.IsSuccess)
-                return NotFound(result);
-
-            return Ok(result);
+            if (result.IsSuccess) return Ok(result.Data);
+            return HandleResult(result);
         }
 
         [HttpPost("add new careerPath")]
@@ -48,10 +59,8 @@ namespace API.Controllers
 
             var result = await _careerPathService.CreateCareerPathAsync(request);
 
-            if (!result.IsSuccess)
-                return BadRequest(result);
-
-            return Ok(result);
+            if (result.IsSuccess) return Ok(result.Data);
+            return HandleResult(result);
         }
         [HttpPut("updatecareerPath/{id}")]
         [Authorize(Roles = "Admin")]
@@ -62,10 +71,8 @@ namespace API.Controllers
 
             var result = await _careerPathService.UpdateCareerPathAsync(id, request);
 
-            if (!result.IsSuccess)
-                return BadRequest(result);
-
-            return Ok(result);
+            if (result.IsSuccess) return Ok(result.Data);
+            return HandleResult(result);
         }
         [HttpDelete("deletecareerPath/{id}")]
         [Authorize(Roles = "Admin")]
@@ -73,10 +80,8 @@ namespace API.Controllers
         {
             var result = await _careerPathService.DeleteCareerPathAsync(id);
 
-            if (!result.IsSuccess)
-                return NotFound(result);
-
-            return Ok(result);
+            if (result.IsSuccess) return Ok(new { Message = result.Data });
+            return HandleResult(result);
         }
     }
 }

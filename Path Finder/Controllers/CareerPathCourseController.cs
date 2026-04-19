@@ -1,6 +1,6 @@
 ﻿using BLL.Dtos.CareerPathCourseDtos;
 using BLL.Services.CareerPathCourseServices;
-using Microsoft.AspNetCore.Http;
+using BLL.Common;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Path_Finder.Controllers
@@ -16,36 +16,47 @@ namespace Path_Finder.Controllers
             _service = service;
         }
 
-        //[HttpPost]
-        //public async Task<IActionResult> Create([FromBody] CareerPathCourseRQ request)
-        //{
-        //    var result = await _service.CreateAsync(request);
+        private IActionResult HandleResult<T>(ServiceResult<T> result)
+        {
+            if (result.IsSuccess)
+                return Ok(new { Data = result.Data, Message = result.Data as string });
 
-        //    if (!result.IsSuccess)
-        //        return BadRequest(result);
+            return result.ErrorCode switch
+            {
+                ServiceErrorCode.NotFound => NotFound(new { Message = result.ErrorMessage }),
+                ServiceErrorCode.UpstreamServiceError => StatusCode(503, new { Message = result.ErrorMessage }),
+                ServiceErrorCode.ValidationError => BadRequest(new { Message = result.ErrorMessage }),
+                _ => BadRequest(new { Message = result.ErrorMessage })
+            };
+        }
 
-        //    return Ok(result);
-        //}
+        [HttpPost]
+        public async Task<IActionResult> Create([FromBody] CareerPathCourseRQ request)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+
+            var result = await _service.CreateAsync(request);
+
+            if (result.IsSuccess) return Ok(result.Data);
+            return HandleResult(result);
+        }
 
         [HttpGet("career-path/{careerPathId}")]
         public async Task<IActionResult> GetByCareerPathId(int careerPathId)
         {
             var result = await _service.GetByCareerPathIdAsync(careerPathId);
 
-            if (!result.IsSuccess)
-                return BadRequest(result);
-
-            return Ok(result);
+            if (result.IsSuccess) return Ok(result.Data);
+            return HandleResult(result);
         }
-        //[HttpDelete("{id}")]
-        //public async Task<IActionResult> Delete(int id)
-        //{
-        //    var result = await _service.DeleteAsync(id);
 
-        //    if (!result.IsSuccess)
-        //        return NotFound(result);
+        [HttpDelete("{id:int}")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            var result = await _service.DeleteAsync(id);
 
-        //    return Ok(result);
-        //}
+            if (result.IsSuccess) return Ok(new { Message = result.Data });
+            return HandleResult(result);
+        }
     }
 }

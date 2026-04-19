@@ -366,9 +366,6 @@ namespace BLL.Services.AuthService
             if (user == null)
                 return new AuthModel { Message = "User not found." };
 
-            if (user.EmailConfirmed)
-                return new AuthModel { Message = "Email already confirmed." };
-
             try
             {
                 await _userManager.UpdateSecurityStampAsync(user);
@@ -377,12 +374,14 @@ namespace BLL.Services.AuthService
                 var emailBody = $"<h1>Path Finder</h1><p>Your new OTP code: <strong>{otp}</strong></p>";
 
                 await _emailService.SendEmailAsync(user.Email, "Resend OTP", emailBody);
-
+                var rolesList = await _userManager.GetRolesAsync(user);
                 return new AuthModel
                 {
                     Message = "OTP has been resent successfully.",
                     Email = user.Email,
-                    Username = user.UserName
+                    Username = user.UserName,
+                    Roles = rolesList.ToList(),
+                    ExpiresOn=DateTime.Now
                 };
             }
             catch (Exception ex)

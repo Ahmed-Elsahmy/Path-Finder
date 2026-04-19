@@ -1,18 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using AutoMapper;
 using BLL.Common;
+using BLL.Dtos.CareerPathCourseDtos;
 using BLL.Dtos.CareerPathDtos;
-using BLL.Dtos.UserProfileDtos;
 using DAL.Helper.Enums;
 using DAL.Models;
 using DAL.Repository;
-using DocumentFormat.OpenXml.Spreadsheet;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -32,7 +33,7 @@ namespace BLL.Services.CareerPathServices
         private readonly IHttpClientFactory _httpClientFactory;
 
         private const string GeminiBaseUrl =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+         "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
         public CareerPathService(
           IRepository<CareerPath> careerpathRepository,
@@ -54,105 +55,175 @@ namespace BLL.Services.CareerPathServices
             _config = config;
             _httpClientFactory = httpClientFactory;
         }
-        public async Task<ServiceResult<string>> CreateCareerPathAsync(CareerPathRQ request)
+        public async Task<ServiceResult<CareerPathRS>> CreateCareerPathAsync(CareerPathRQ request)
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(request.CarrerPathName))
-                    return ServiceResult<string>.Failure("Path name is required");
 
-                var existing = await _careerpathRepository
-                    .FirstOrDefaultAsync(x =>
-                        x.PathName == request.CarrerPathName &&
-                        x.DifficultyLevel == request.DifficultyLevel);
+                var existing = await _careerpathRepository.FirstOrDefaultAsync(x =>
+                    x.PathName == request.CareerPathName &&
+                    x.DifficultyLevel == request.DifficultyLevel);
 
                 if (existing != null)
-                    return ServiceResult<string>.Failure("Career path already exists");
+                    return ServiceResult<CareerPathRS>.Failure("Career path already exists", ServiceErrorCode.ValidationError);
 
                 var careerPath = _mapper.Map<CareerPath>(request);
 
                 await _careerpathRepository.AddAsync(careerPath);
                 await _careerpathRepository.SaveChangesAsync();
 
-                var courses = (await _courseRepository.GetAllAsync()).ToList();
+                // 🔥 Load related courses for this path (by SubCategoryId / CategoryId if provided)
+                IQueryable<Course> relatedCoursesQuery = _courseRepository.Query()
+                    .Include(c => c.Category)
+                    .Include(c => c.SubCategory);
 
-                // 🔥 NEW AI PLAN
-                var aiPlan = await GenerateCoursePlanAsync(
-                    request.CarrerPathName,
-                    courses);
+                if (request.SubCategoryId.HasValue)
+                    relatedCoursesQuery = relatedCoursesQuery.Where(c => c.SubCategoryId == request.SubCategoryId.Value);
+                else if (request.CategoryId.HasValue)
+                    relatedCoursesQuery = relatedCoursesQuery.Where(c => c.CategoryId == request.CategoryId.Value);
 
-                // ✅ VALIDATION
-                aiPlan = aiPlan
-                    .Where(x => courses.Any(c => c.Id == x.CourseId))
-                    .GroupBy(x => x.CourseId)
-                    .Select(g => g.First())
-                    .OrderBy(x => x.Order)
-                    .ToList();
+                var relatedCourses = await relatedCoursesQuery.ToListAsync();
 
-                // 🔁 FALLBACK if AI fails
-                if (!aiPlan.Any())
+                if (!relatedCourses.Any())
                 {
-                    var fallbackCourses = courses
-                        .Where(c => c.Category.Name.Contains(request.CarrerPathName))
-                        .Take(5)
-                        .ToList();
-
-                    int order = 1;
-
-                    aiPlan = fallbackCourses.Select(c => new CourseRecommendation
-                    {
-                        CourseId = c.Id,
-                        Order = order++,
-                        IsRequired = true,
-                        Reason = "Fallback selection based on category"
-                    }).ToList();
+                    relatedCourses = await _courseRepository.Query()
+                        .Include(c => c.Category)
+                        .Include(c => c.SubCategory)
+                        .ToListAsync();
                 }
 
-                // 💾 SAVE WITH ORDER + IMPORTANCE
-                var relations = aiPlan.Select(x => new CareerPathCourse
+                // How many courses should be attached to this career path
+                var hasCategoryFilter = request.SubCategoryId.HasValue || request.CategoryId.HasValue;
+
+                var desiredCount = 
+                    hasCategoryFilter
+                        ? relatedCourses.Count // default = all related courses (within the chosen category/subcategory)
+                        : Math.Min(10, relatedCourses.Count); // safety default when no category filter is provided
+
+                // 🔥 Generate AI plan (selection + order)
+                var aiPlan = desiredCount > 0
+                    ? await GenerateCoursePlanAsync(
+                        careerPathName: request.CareerPathName,
+                        desiredCount: desiredCount,
+                        courses: relatedCourses,
+                        careerPathDescription: request.Description,
+                        careerPathDifficulty: request.DifficultyLevel)
+                    : new List<CourseRecommendation>();
+
+                // ✅ Apply AI plan + fill missing courses (fallback) to reach desiredCount
+                var aiOrderedCourseIds = aiPlan
+                    .OrderBy(x => x.Order)
+                    .Select(x => x.CourseId)
+                    .ToList();
+
+                var used = aiOrderedCourseIds.ToHashSet();
+
+                var remainingCourseIds = relatedCourses
+                    .Where(c => !used.Contains(c.Id))
+                    .OrderByDescending(c => c.Rating ?? 0)
+                    .ThenByDescending(c => c.IsFree)
+                    .Select(c => c.Id)
+                    .Take(Math.Max(0, desiredCount - aiOrderedCourseIds.Count))
+                    .ToList();
+
+                var finalCourseIds = aiOrderedCourseIds
+                    .Concat(remainingCourseIds)
+                    .Take(desiredCount)
+                    .ToList();
+
+                var aiLookup = aiPlan.ToDictionary(x => x.CourseId, x => x);
+                var relations = new List<CareerPathCourse>(finalCourseIds.Count);
+
+                for (int i = 0; i < finalCourseIds.Count; i++)
                 {
-                    CareerPathId = careerPath.CareerPathId,
-                    CourseId = x.CourseId,
-                    OrderNumber = x.Order,
-                    IsRequired = x.IsRequired,
-                    CompletionCriteria = x.Reason
-                }).ToList();
+                    var courseId = finalCourseIds[i];
+                    aiLookup.TryGetValue(courseId, out var rec);
 
-                await _careerPathCourseRepository.AddRangeAsync(relations);
-                await _careerPathCourseRepository.SaveChangesAsync();
+                    relations.Add(new CareerPathCourse
+                    {
+                        CareerPathId = careerPath.CareerPathId,
+                        CourseId = courseId,
+                        OrderNumber = i + 1,
+                        IsRequired = rec?.IsRequired ?? true,
+                        CompletionCriteria = rec?.Reason ?? "Related course"
+                    });
+                }
+                var aiDetails = await GenerateCareerPathDetailsAsync(
+    careerPath.PathName,
+    careerPath.Description,
+    careerPath.DifficultyLevel);
 
-                return ServiceResult<string>.Success("Career path created with AI learning plan 🚀");
+                if (aiDetails != null)
+                {
+                    careerPath.Prerequisites = aiDetails.Prerequisites;
+                    careerPath.ExpectedOutcomes = aiDetails.ExpectedOutcomes;
+                    await _careerPathCourseRepository.SaveChangesAsync();
+                }
+                if (relations.Any())
+                {
+                    await _careerPathCourseRepository.AddRangeAsync(relations);
+                    careerPath.TotalCourses = relations.Count;
+                    await _careerPathCourseRepository.SaveChangesAsync();
+                }
+                else
+                {
+                    careerPath.TotalCourses = 0;
+                    await _careerpathRepository.SaveChangesAsync();
+                }
+
+                // ✅ Return created path with its courses
+                var created = await _careerpathRepository.Query()
+                    .Include(cp => cp.Category)
+                    .Include(cp => cp.SubCategory)
+                    .Include(cp => cp.CareerPathCourses)
+                        .ThenInclude(cpc => cpc.Course)
+                    .FirstOrDefaultAsync(cp => cp.CareerPathId == careerPath.CareerPathId);
+
+                if (created == null)
+                    return ServiceResult<CareerPathRS>.Failure("Career path created but could not be loaded.", ServiceErrorCode.UpstreamServiceError);
+
+                var response = _mapper.Map<CareerPathRS>(created);
+                response.Courses = created.CareerPathCourses
+                    .OrderBy(x => x.OrderNumber)
+                    .Select(x => _mapper.Map<CareerPathCourseRS>(x))
+                    .ToList();
+
+                return ServiceResult<CareerPathRS>.Success(response);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating CareerPath");
-                return ServiceResult<string>.Failure($"Error: {ex.Message}");
+                return ServiceResult<CareerPathRS>.Failure("An error occurred while creating the career path.", ServiceErrorCode.UpstreamServiceError);
             }
         }
 
         private async Task<List<CourseRecommendation>> GenerateCoursePlanAsync(
             string careerPathName,
-            List<Course> courses)
+            int desiredCount,
+            List<Course> courses,
+            string? careerPathDescription = null,
+            DifficultyLevel? careerPathDifficulty = null)
         {
-            try
+            var apiKey = _config["Gemini:ApiKey"];
+            if (string.IsNullOrWhiteSpace(apiKey))
+                throw new InvalidOperationException("Gemini API key is missing.");
+
+            var limitedCourses = courses.Take(60).ToList();
+            var expectedCount = Math.Min(desiredCount, limitedCourses.Count);
+
+            var courseText = string.Join("\n", limitedCourses.Select(c =>
             {
-                var apiKey = _config["Gemini:ApiKey"];
-                if (string.IsNullOrWhiteSpace(apiKey))
-                {
-                    _logger.LogWarning("Gemini API key missing");
-                    return BuildFallback(courses);
-                }
+                var category = c.Category?.Name ?? "General";
+                var subCategory = c.SubCategory?.Name ?? "N/A";
+                var description = c.Description ?? "N/A";
 
-                // 🔥 LIMIT courses (IMPORTANT)
-                var limitedCourses = courses.Take(30).ToList();
+                if (description.Length > 120)
+                    description = description.Substring(0, 120);
 
-                var courseText = string.Join("\n", limitedCourses.Select(c =>
-                {
-                    var category = c.Category?.Name ?? "General";
-                    return $"Id: {c.Id}, Title: {c.Name}, Category: {category}";
-                }));
+                return $"Id: {c.Id}, Title: {c.Name}, Category: {category}, SubCategory: {subCategory}, Description: {description}";
+            }));
 
-                var prompt = $@"
+            var prompt = $@"
 You are an AI Career Path Planner.
 
 Return ONLY valid JSON array.
@@ -168,7 +239,7 @@ Schema:
 ]
 
 Rules:
-- Max 5 items
+- Return exactly {expectedCount} items
 - Order starts from 1
 - No duplicate CourseId
 - Reason max 10 words
@@ -178,9 +249,108 @@ Rules:
 
 Career Path:
 {careerPathName}
+Description: {careerPathDescription ?? "Not provided"}
+Difficulty: {careerPathDifficulty?.ToString() ?? "Not provided"}
 
 Courses:
 {courseText}
+";
+
+            var body = new
+            {
+                contents = new[]
+                {
+            new { parts = new[] { new { text = prompt } } }
+        }
+            };
+
+            var httpContent = new StringContent(
+                JsonSerializer.Serialize(body),
+                Encoding.UTF8,
+                "application/json");
+
+            var client = _httpClientFactory.CreateClient("GeminiClient");
+            client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
+
+            HttpResponseMessage response = null!;
+
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                response = await client.PostAsync(GeminiBaseUrl, httpContent);
+
+                if (response.IsSuccessStatusCode) break;
+
+                if ((int)response.StatusCode == 503 && attempt < 3)
+                {
+                    _logger.LogWarning("Gemini 503 on attempt {Attempt}, retrying...", attempt);
+                    await Task.Delay(3000);
+                }
+                else
+                {
+                    throw new HttpRequestException($"Gemini API failed with status {response.StatusCode}");
+                }
+            }
+
+            var responseString = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+                throw new Exception($"Gemini error: {responseString}");
+
+            using var doc = JsonDocument.Parse(responseString);
+
+            var aiText = doc.RootElement
+                .GetProperty("candidates")[0]
+                .GetProperty("content")
+                .GetProperty("parts")[0]
+                .GetProperty("text")
+                .GetString();
+
+            aiText = aiText?.Replace("```json", "").Replace("```", "").Trim();
+
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+
+            var result = JsonSerializer.Deserialize<List<CourseRecommendation>>(aiText ?? "[]", options);
+
+            if (result == null || !result.Any())
+                throw new Exception("AI returned empty or invalid course plan.");
+
+            return result;
+        }
+        private async Task<AiCareerPathDetails?> GenerateCareerPathDetailsAsync(
+    string careerPathName,
+    string? careerPathDescription,
+    DifficultyLevel? careerPathDifficulty)
+        {
+            try
+            {
+                var apiKey = _config["Gemini:ApiKey"];
+                if (string.IsNullOrWhiteSpace(apiKey))
+                {
+                    _logger.LogWarning("Gemini API key missing");
+                    return null;
+                }
+
+                var prompt = $@"
+You are an AI Career Path Designer.
+
+Return ONLY valid JSON object with exactly two properties:
+
+{{
+  ""Prerequisites"": string,
+  ""ExpectedOutcomes"": string
+}}
+
+Rules:
+- Each field max 600 characters
+- No markdown
+- No explanation
+
+Career Path Name: {careerPathName}
+Description: {careerPathDescription ?? "Not provided"}
+Difficulty: {careerPathDifficulty?.ToString() ?? "Not provided"}
 ";
 
                 var body = new
@@ -188,161 +358,48 @@ Courses:
                     contents = new[]
                     {
                 new { parts = new[] { new { text = prompt } } }
-            },
-                    generationConfig = new
-                    {
-                        temperature = 0.2,
-                        topP = 0.9,
-                        maxOutputTokens = 1000
-                    }
+            }
                 };
-
-                var client = _httpClientFactory.CreateClient("GeminiClient");
-                client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
 
                 var httpContent = new StringContent(
                     JsonSerializer.Serialize(body),
                     Encoding.UTF8,
                     "application/json");
 
-                // 🔁 RETRY LOOP
-                for (int attempt = 1; attempt <= 3; attempt++)
+                var client = _httpClientFactory.CreateClient("GeminiClient");
+                client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
+
+                var response = await client.PostAsync(GeminiBaseUrl, httpContent);
+                var responseString = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
                 {
-                    var response = await client.PostAsync(GeminiBaseUrl, httpContent);
-                    var responseString = await response.Content.ReadAsStringAsync();
-
-                    _logger.LogInformation("Gemini RAW: {Response}", responseString);
-
-                    if (!response.IsSuccessStatusCode)
-                        continue;
-
-                    using var doc = JsonDocument.Parse(responseString);
-
-                    var aiText = ExtractAiText(doc);
-
-                    if (string.IsNullOrWhiteSpace(aiText))
-                        continue;
-
-                    // 🧹 CLEAN
-                    aiText = aiText
-                        .Replace("```json", "")
-                        .Replace("```", "")
-                        .Trim();
-
-                    var json = ExtractJson(aiText);
-
-                    if (string.IsNullOrWhiteSpace(json))
-                        continue;
-
-                    List<CourseRecommendation>? parsed = null;
-
-                    try
-                    {
-                        parsed = JsonSerializer.Deserialize<List<CourseRecommendation>>(json,
-                            new JsonSerializerOptions
-                            {
-                                PropertyNameCaseInsensitive = true
-                            });
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "JSON parsing failed");
-                        continue;
-                    }
-
-                    var validated = ValidateAiResult(parsed, courses);
-
-                    if (validated.Any())
-                        return validated;
-
-                    await Task.Delay(1000);
+                    _logger.LogError("Gemini error: {Body}", responseString);
+                    return null;
                 }
 
-                _logger.LogWarning("AI failed → fallback used");
-                return BuildFallback(courses);
+                using var doc = JsonDocument.Parse(responseString);
+
+                var aiText = doc.RootElement
+                    .GetProperty("candidates")[0]
+                    .GetProperty("content")
+                    .GetProperty("parts")[0]
+                    .GetProperty("text")
+                    .GetString();
+
+                aiText = aiText?.Replace("```json", "").Replace("```", "").Trim();
+
+                var result = JsonSerializer.Deserialize<AiCareerPathDetails>(
+                    aiText ?? "{}",
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                return result;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "AI course planning failed");
-                return BuildFallback(courses);
+                _logger.LogError(ex, "Failed to generate career path details");
+                return null;
             }
-        }
-        private string ExtractAiText(JsonDocument doc)
-        {
-            try
-            {
-                if (doc.RootElement.TryGetProperty("candidates", out var candidates) &&
-                    candidates.GetArrayLength() > 0)
-                {
-                    var content = candidates[0].GetProperty("content");
-
-                    if (content.TryGetProperty("parts", out var parts) &&
-                        parts.GetArrayLength() > 0)
-                    {
-                        return parts[0].GetProperty("text").GetString() ?? "";
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to extract AI text");
-            }
-
-            return string.Empty;
-        }
-        private string ExtractJson(string input)
-        {
-            var start = input.IndexOf("[");
-            var end = input.LastIndexOf("]");
-
-            if (start == -1 || end == -1 || end <= start)
-                return string.Empty;
-
-            return input.Substring(start, end - start + 1);
-        }
-        private List<CourseRecommendation> ValidateAiResult(
-    List<CourseRecommendation>? result,
-    List<Course> courses)
-        {
-            if (result == null || !result.Any())
-                return new List<CourseRecommendation>();
-
-            var validIds = courses.Select(c => c.Id).ToHashSet();
-
-            var cleaned = result
-                .Where(x =>
-                    x.CourseId > 0 &&
-                    validIds.Contains(x.CourseId) &&
-                    x.Order > 0)
-                .GroupBy(x => x.CourseId)
-                .Select(g => g.First())
-                .OrderBy(x => x.Order)
-                .Take(5)
-                .ToList();
-
-            // 🔥 Fix order + defaults
-            for (int i = 0; i < cleaned.Count; i++)
-            {
-                cleaned[i].Order = i + 1;
-
-                if (string.IsNullOrWhiteSpace(cleaned[i].Reason))
-                    cleaned[i].Reason = "Recommended course";
-            }
-
-            return cleaned;
-        }
-        private List<CourseRecommendation> BuildFallback(List<Course> courses)
-        {
-            return courses
-                .Take(5)
-                .Select((c, i) => new CourseRecommendation
-                {
-                    CourseId = c.Id,
-                    Order = i + 1,
-                    IsRequired = true,
-                    Reason = "Fallback recommendation"
-                })
-                .ToList();
         }
         public async Task<ServiceResult<string>> DeleteCareerPathAsync(int id)
         {
@@ -352,19 +409,19 @@ Courses:
                 var careerpath = await _careerpathRepository.GetByIdAsync(id);
                 if (careerpath == null)
                 {
-                    return ServiceResult<string>.Failure("CareerpPath not found.");
+                    return ServiceResult<string>.Failure("Career path not found.", ServiceErrorCode.NotFound);
                 }
                 _careerpathRepository.Remove(careerpath);
                 await _careerpathRepository.SaveChangesAsync();
 
-                return ServiceResult<string>.Success("CareerpPath deleted successfully.");
+                return ServiceResult<string>.Success("Career path deleted successfully.");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error deleting CareerpPath {CareerpPath}", id);
 
                 return ServiceResult<string>
-                    .Failure("An error occurred while deleting the CareerpPath.");
+                    .Failure("An error occurred while deleting the career path.", ServiceErrorCode.UpstreamServiceError);
             }
         }
 
@@ -372,14 +429,21 @@ Courses:
         {
             try
             {
-                var careerpaths = await _careerpathRepository.GetAllAsync();
+                var careerpaths = await _careerpathRepository.Query()
+                    .Include(x => x.Category)
+                    .Include(x => x.SubCategory)
+                        .Include(x => x.CareerPathCourses)
+                        .ThenInclude(x => x.Course)
+                    .OrderByDescending(x => x.CreatedAt)
+                    .ToListAsync();
+
                 var result = _mapper.Map<List<CareerPathRS>>(careerpaths);
                 return ServiceResult<List<CareerPathRS>>.Success(result);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error retrieving CarrerPaths");
-                return ServiceResult<List<CareerPathRS>>.Failure("Error retrieving CarrerPaths.");
+                return ServiceResult<List<CareerPathRS>>.Failure("Error retrieving career paths.", ServiceErrorCode.UpstreamServiceError);
             }
         }
 
@@ -387,38 +451,69 @@ Courses:
         {
             try
             {
-                var careerpath = await _careerpathRepository.FirstOrDefaultAsync(c => c.CareerPathId == id);
+                var careerpath = await _careerpathRepository.Query()
+                    .Include(x => x.Category)
+                    .Include(x => x.SubCategory)
+                    .Include(x => x.CareerPathCourses)
+                        .ThenInclude(x => x.Course)
+                    .FirstOrDefaultAsync(c => c.CareerPathId == id);
+
+                if (careerpath == null)
+                    return ServiceResult<CareerPathRS>.Failure("Career path not found.", ServiceErrorCode.NotFound);
+
                 var result = _mapper.Map<CareerPathRS>(careerpath);
+                result.Courses = careerpath.CareerPathCourses
+                    .OrderBy(x => x.OrderNumber)
+                    .Select(x => _mapper.Map<CareerPathCourseRS>(x))
+                    .ToList();
+
                 return ServiceResult<CareerPathRS>.Success(result);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error retrieving CarrerPath with id {id}");
-                return ServiceResult<CareerPathRS>.Failure($"Error retrieving CarrerPath with id {id}.");
+                return ServiceResult<CareerPathRS>.Failure($"Error retrieving career path with id {id}.", ServiceErrorCode.UpstreamServiceError);
             }
         }
 
-        public async Task<ServiceResult<string>> UpdateCareerPathAsync(int id, UpdateCareerPathRQ request)
+        public async Task<ServiceResult<CareerPathRS>> UpdateCareerPathAsync(int id, UpdateCareerPathRQ request)
         {
             try
             {
-                var experience = await _careerpathRepository
-                    .GetByIdAsync(id);
-                if (experience == null)
+                var careerPath = await _careerpathRepository.GetByIdAsync(id);
+                if (careerPath == null)
                 {
-                    return ServiceResult<string>.Failure("CareerPath not found.");
+                    return ServiceResult<CareerPathRS>.Failure("Career path not found.", ServiceErrorCode.NotFound);
                 }
-                _mapper.Map(request, experience);
+
+                _mapper.Map(request, careerPath);
 
                 await _careerpathRepository.SaveChangesAsync();
-                return ServiceResult<string>.Success("CareerPath updated successfully.");
+
+                var updated = await _careerpathRepository.Query()
+                    .Include(x => x.Category)
+                    .Include(x => x.SubCategory)
+                    .Include(x => x.CareerPathCourses)
+                        .ThenInclude(x => x.Course)
+                    .FirstOrDefaultAsync(c => c.CareerPathId == id);
+
+                if (updated == null)
+                    return ServiceResult<CareerPathRS>.Failure("Career path updated but could not be loaded.", ServiceErrorCode.UpstreamServiceError);
+
+                var result = _mapper.Map<CareerPathRS>(updated);
+                result.Courses = updated.CareerPathCourses
+                    .OrderBy(x => x.OrderNumber)
+                    .Select(x => _mapper.Map<CareerPathCourseRS>(x))
+                    .ToList();
+
+                return ServiceResult<CareerPathRS>.Success(result);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error updating CareerPath {CareerPathID}", id);
 
-                return ServiceResult<string>
-                    .Failure("An error occurred while updating the CareerPath.");
+                return ServiceResult<CareerPathRS>
+                    .Failure("An error occurred while updating the CareerPath.", ServiceErrorCode.UpstreamServiceError);
             }
 
         }

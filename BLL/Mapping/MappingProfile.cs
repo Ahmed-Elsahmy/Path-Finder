@@ -41,7 +41,8 @@ namespace BLL.Mapping
 
             // UserCareerPath -> UserCareerPathRS
             CreateMap<UserCareerPath, UserCareerPathRS>()
-                .ForMember(dest => dest.CareerPathStatus, opt => opt.MapFrom(src => src.Status));
+                .ForMember(dest => dest.CareerPathStatus, opt => opt.MapFrom(src => src.Status))
+                .ForMember(dest => dest.CareerPathName, opt => opt.MapFrom(src => src.CareerPath != null ? src.CareerPath.PathName : null));
 
 
             // UserProfile -> UserProfileRS
@@ -116,9 +117,11 @@ namespace BLL.Mapping
             //CareerPathRq -> CarrerPath
             CreateMap<CareerPathRQ, CareerPath>()
                  .ForMember(dest => dest.PathName,
-                            opt => opt.MapFrom(src => src.CarrerPathName))
+                            opt => opt.MapFrom(src => src.CareerPathName))
                  .ForMember(dest => dest.EstimatedDurationMonths,
                             opt => opt.MapFrom(src => src.DurationInMonths))
+                 .ForMember(dest => dest.TotalCourses,
+                            opt => opt.Ignore())
 
                  .ForMember(dest => dest.CreatedAt,
                             opt => opt.MapFrom(src => DateTime.UtcNow));
@@ -132,35 +135,27 @@ namespace BLL.Mapping
 
               .ForMember(dest => dest.EstimatedDurationMonths,
                   opt => opt.MapFrom(src => src.DurationInMonths))
+              .ForMember(dest => dest.TotalCourses,
+                  opt => opt.Ignore())
 
               .ForAllMembers(opts =>
                   opts.Condition((src, dest, srcMember) => srcMember != null));
 
             CreateMap<CareerPath, CareerPathRS>()
-
-
-            .ForMember(dest => dest.Id,
-                opt => opt.MapFrom(src => src.CareerPathId))
-
-
-            .ForMember(dest => dest.Name,
-                opt => opt.MapFrom(src => src.PathName))
-
-
-            .ForMember(dest => dest.DurationInMonths,
-                opt => opt.MapFrom(src => src.EstimatedDurationMonths))
-
-            .ForMember(dest => dest.DifficultyLevel,
-                opt => opt.MapFrom(src =>
-                    src.DifficultyLevel.HasValue
-                        ? src.DifficultyLevel.ToString()
-                        : null));
+            .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.CareerPathId))
+            .ForMember(dest => dest.Name, opt => opt.MapFrom(src => src.PathName))
+            .ForMember(dest => dest.DurationInMonths, opt => opt.MapFrom(src => src.EstimatedDurationMonths))
+            .ForMember(dest => dest.DifficultyLevel, opt => opt.MapFrom(src => src.DifficultyLevel))
+            .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category != null ? src.Category.Name : null))
+            .ForMember(dest => dest.SubCategoryName, opt => opt.MapFrom(src => src.SubCategory != null ? src.SubCategory.Name : null))
+           .ForMember(dest => dest.Courses,
+    opt => opt.MapFrom(src => src.CareerPathCourses));
 
 
 
             CreateMap<CareerPathCourse, CareerPathCourseRS>()
-    .ForMember(dest => dest.CareerPathName, opt => opt.MapFrom(src => src.CareerPath.PathName))
-    .ForMember(dest => dest.CourseName, opt => opt.MapFrom(src => src.Course.Name));
+    .ForMember(dest => dest.CareerPathName, opt => opt.MapFrom(src => src.CareerPath != null ? src.CareerPath.PathName : string.Empty))
+    .ForMember(dest => dest.CourseName, opt => opt.MapFrom(src => src.Course != null ? src.Course.Name : string.Empty));
         }
     }
 }

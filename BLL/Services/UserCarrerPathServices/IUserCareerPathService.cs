@@ -15,7 +15,7 @@ namespace BLL.Services.UserCarrerPathServices
         Task<ServiceResult<List<UserCareerPathRS>>> GetUserCareerPathsAsync(string userId);
         Task<ServiceResult<UserCareerPathRS>> GetUserCareerPathByIdAsync(string userId, int userCareerPathId);
         Task<ServiceResult<bool>> IsUserEnrolledAsync(string userId, int careerPathId);
-        Task<ServiceResult<List<UserCareerPathRS>>> GetRecommendedCareerPathsAsync(string userId);
+        Task<ServiceResult<List<RecommendedCareerPathDto>>> GetRecommendedCareerPathsAsync(string userId);
         Task<ServiceResult<List<UserCareerPathRS>>> GetCareerPathsAsync(string userId, UserCareerPathFilter filter);
 
     }
