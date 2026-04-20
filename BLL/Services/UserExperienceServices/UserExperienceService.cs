@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -105,7 +105,7 @@ namespace BLL.Services.UserExperienceServices
             }
         }
 
-        public async Task<ServiceResult<string>> UpdateUserProfileAsync(
+        public async Task<ServiceResult<string>> UpdateExperienceAsync(
      string userId,
      int experienceId,
      UpdateUserExperienceRQ request)
@@ -113,10 +113,10 @@ namespace BLL.Services.UserExperienceServices
             try
             {
                 var experience = await _experienceRepository
-                    .GetByIdAsync(experienceId);
+                    .FirstOrDefaultAsync(e => e.ExperienceId == experienceId && e.UserId == userId);
                 if (experience == null)
                 {
-                    return ServiceResult<string>.Failure("Experience not found.");
+                    return ServiceResult<string>.Failure("Experience not found or does not belong to you.");
                 }
                 _mapper.Map(request, experience);
                 if (experience.StartDate.HasValue && experience.EndDate.HasValue)
@@ -158,10 +158,11 @@ namespace BLL.Services.UserExperienceServices
          
             try
             {
-                var experience = await _experienceRepository.GetByIdAsync(experienceId);
+                var experience = await _experienceRepository
+                    .FirstOrDefaultAsync(e => e.ExperienceId == experienceId && e.UserId == userId);
                 if (experience == null)
                 {
-                    return ServiceResult<string>.Failure("Experience not found.");
+                    return ServiceResult<string>.Failure("Experience not found or does not belong to you.");
                 }
                  _experienceRepository.Remove(experience);
                 await _experienceRepository.SaveChangesAsync();

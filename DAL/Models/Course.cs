@@ -1,4 +1,4 @@
-﻿using DAL.Helper.Enums;
+using DAL.Helper.Enums;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -13,9 +13,11 @@ namespace DAL.Models
     {
         [Key]
         public int Id { get; set; }
+        [Required]
         public string  Name { get; set; }
         public string? Description { get; set; }
         public string? Instructor { get; set; }
+        [Required]
         public string ExternalUrl { get; set; }
         public decimal? Price { get; set; }
         public bool IsFree { get; set; } = true;
