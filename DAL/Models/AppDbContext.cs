@@ -83,6 +83,19 @@ namespace DAL.Models
             modelBuilder.Entity<UserCareerPath>()
                 .Property(x => x.Status)
                     .HasConversion<string>();
+
+            // ═══ Job Module Indexes ═══
+            modelBuilder.Entity<JobSource>()
+                .HasIndex(js => js.SourceName)
+                .IsUnique();
+
+            modelBuilder.Entity<JobApplication>()
+                .HasIndex(ja => new { ja.UserId, ja.JobId })
+                .IsUnique(); // Prevent duplicate applications
+
+            modelBuilder.Entity<SavedJob>()
+                .HasIndex(sj => new { sj.UserId, sj.JobId })
+                .IsUnique(); // Prevent duplicate saves
         }
 
         public DbSet<CV> CVs { get; set; }
@@ -100,6 +113,13 @@ namespace DAL.Models
         public DbSet<CareerPath> CareerPaths { get; set; }
         public DbSet<UserCareerPath> UserCareerPaths { get; set; }
         public DbSet<CareerPathCourse> CareerPathCourses { get; set; }
+
+        // ═══ Job Module ═══
+        public DbSet<JobSource> JobSources { get; set; }
+        public DbSet<Job> Jobs { get; set; }
+        public DbSet<JobSkillRequirement> JobSkillRequirements { get; set; }
+        public DbSet<JobApplication> JobApplications { get; set; }
+        public DbSet<SavedJob> SavedJobs { get; set; }
 
     }
 }

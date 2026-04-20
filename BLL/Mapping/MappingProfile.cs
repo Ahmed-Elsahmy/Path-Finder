@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using BLL.Dtos.CareerPathCourseDtos;
 using BLL.Dtos.CareerPathDtos;
 using BLL.Dtos.CategoryDtos;
@@ -7,6 +7,7 @@ using BLL.Dtos.CoursePlatformDtos;
 using BLL.Dtos.CourseProgressDtos;
 using BLL.Dtos.CvDtos;
 using BLL.Dtos.EducationDtos;
+using BLL.Dtos.JobDtos;
 using BLL.Dtos.SkillDtos;
 using BLL.Dtos.UserCarrerPathDtos;
 using BLL.Dtos.UserExperienceDtos;
@@ -156,6 +157,36 @@ namespace BLL.Mapping
             CreateMap<CareerPathCourse, CareerPathCourseRS>()
     .ForMember(dest => dest.CareerPathName, opt => opt.MapFrom(src => src.CareerPath != null ? src.CareerPath.PathName : string.Empty))
     .ForMember(dest => dest.CourseName, opt => opt.MapFrom(src => src.Course != null ? src.Course.Name : string.Empty));
+
+            // ═══ Job Module Mappings ═══
+
+            // JobSource
+            CreateMap<JobSource, JobSourceRS>()
+                .ForMember(dest => dest.JobCount, opt => opt.MapFrom(src => src.Jobs != null ? src.Jobs.Count : 0));
+            CreateMap<JobSourceRQ, JobSource>();
+
+            // Job → JobRS (include source name + skills)
+            CreateMap<Job, JobRS>()
+                .ForMember(dest => dest.SourceName, opt => opt.MapFrom(src => src.Source != null ? src.Source.SourceName : ""))
+                .ForMember(dest => dest.RequiredSkills, opt => opt.MapFrom(src => src.SkillRequirements));
+
+            CreateMap<JobRQ, Job>();
+
+            // JobSkillRequirement → JobSkillRS
+            CreateMap<JobSkillRequirement, JobSkillRS>()
+                .ForMember(dest => dest.SkillName, opt => opt.MapFrom(src => src.Skill != null ? src.Skill.SkillName : ""));
+
+            // JobApplication → JobApplicationRS
+            CreateMap<JobApplication, JobApplicationRS>()
+                .ForMember(dest => dest.JobTitle, opt => opt.MapFrom(src => src.Job != null ? src.Job.JobTitle : ""))
+                .ForMember(dest => dest.CompanyName, opt => opt.MapFrom(src => src.Job != null ? src.Job.CompanyName : ""));
+
+            // SavedJob → SavedJobRS
+            CreateMap<SavedJob, SavedJobRS>()
+                .ForMember(dest => dest.JobTitle, opt => opt.MapFrom(src => src.Job != null ? src.Job.JobTitle : ""))
+                .ForMember(dest => dest.CompanyName, opt => opt.MapFrom(src => src.Job != null ? src.Job.CompanyName : ""))
+                .ForMember(dest => dest.Location, opt => opt.MapFrom(src => src.Job != null ? src.Job.Location : ""))
+                .ForMember(dest => dest.JobType, opt => opt.MapFrom(src => src.Job != null ? src.Job.JobType : ""));
         }
     }
 }

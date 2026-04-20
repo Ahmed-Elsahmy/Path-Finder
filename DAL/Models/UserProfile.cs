@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace DAL.Models
@@ -7,7 +7,7 @@ namespace DAL.Models
     {
         [Key]
         public int ProfileId { get; set; }
-        [ForeignKey("User")]
+        [Required]
         public string UserId { get; set; }
         [ForeignKey("UserId")]
         public virtual User User { get; set; }

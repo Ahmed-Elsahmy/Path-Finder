@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json.Serialization;
 using BLL.Mapping;
 using BLL.Services.AuthService;
@@ -18,6 +18,8 @@ using BLL.Services.SkillService;
 using BLL.Services.UserCarrerPathServices;
 using BLL.Services.UserExperienceServices;
 using BLL.Services.UserProfileServices;
+using BLL.Services.CourseRecommendationService;
+using BLL.Services.ResumeBuilderService;
 using DAL.Helper;
 using DAL.Models;
 using DAL.Repository;
@@ -28,6 +30,10 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Path_Finder.Middleware;
 using Serilog;
+using BLL.Services.JobApplicationServices;
+using BLL.Services.JobServices;
+using BLL.Services.JobSourceServices;
+using BLL.Services.SavedJobServices;
 
 namespace Path_Finder
 {
@@ -118,6 +124,12 @@ namespace Path_Finder
                 builder.Services.AddScoped<ICareerPathService, CareerPathService>();
                 builder.Services.AddScoped<IUserCareerPathService, UserCareerPathService>();
                 builder.Services.AddScoped<ICareerPathCourseService, CareerPathCourseService>();
+                builder.Services.AddScoped<ICourseRecommendationService, CourseRecommendationService>();
+                builder.Services.AddScoped<IResumeBuilderService, ResumeBuilderService>();
+                builder.Services.AddScoped<IJobApplicationService, JobApplicationService>();
+                builder.Services.AddScoped<IJobService, JobService>();
+                builder.Services.AddScoped<IJobSourceService, JobSourceService>();
+                builder.Services.AddScoped<ISavedJobService, SavedJobService>();
 
                 // JWT Configuration
                 builder.Services.Configure<JWT>(builder.Configuration.GetSection("JWT"));
@@ -194,12 +206,9 @@ namespace Path_Finder
                 // Global Exception Handler (must be first in pipeline)
                 app.UseMiddleware<GlobalExceptionMiddleware>();
 
-                if (app.Environment.IsDevelopment())
-                {
                     app.MapOpenApi();
                     app.UseSwagger();
                     app.UseSwaggerUI();
-                }
 
                 app.UseHttpsRedirection();
                 app.UseStaticFiles();

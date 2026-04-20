@@ -15,6 +15,7 @@ namespace BLL.Dtos.UserProfileDtos
         public string ?PhoneNumber { get; set; }
         public string ?Bio { get; set; }
         public string ?Location { get; set; }
+
         public IFormFile ?ProfilePictureUrl { get; set; }
     }
 }

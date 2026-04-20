@@ -1,4 +1,4 @@
-﻿using BLL.Dtos.UserExperienceDtos;
+using BLL.Dtos.UserExperienceDtos;
 using BLL.Services.UserExperienceServices;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -62,7 +62,7 @@ namespace Path_Finder.Controllers
             if (userId is null) return Unauthorized();
 
             var result = await _experienceService
-                .UpdateUserProfileAsync(userId, experienceId, request);
+                .UpdateExperienceAsync(userId, experienceId, request);
 
             if (!result.IsSuccess)
                 return BadRequest(result);

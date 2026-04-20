@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.ComponentModel.DataAnnotations;
@@ -13,13 +13,14 @@ namespace DAL.Models
     {
         [Key]
         public int ExperienceId { get; set; }
-        [ForeignKey("User")]
         [Required]
         public string UserId { get; set; }
         [ForeignKey("UserId")]
         public virtual User User { get; set; }
+        [Required]
         [StringLength(100)]
         public string CompanyName { get; set; }
+        [Required]
         [StringLength(100)]
         public string Position { get; set; }
         public string? Description { get; set; }

@@ -11,6 +11,8 @@ using System.Text;
 using System.Text.Json;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
 
 namespace BLL.Services.CvService
 {
@@ -133,6 +135,21 @@ namespace BLL.Services.CvService
                             recommendedSkills = aiResult.RecommendedSkills;
                         }
                     }
+                    else if (extension == ".docx")
+                    {
+                        string cvText = ExtractTextFromDocx(filePath);
+
+                        if (!string.IsNullOrWhiteSpace(cvText))
+                        {
+                            var aiResult = await ExtractDataWithGeminiAsync(cvText);
+                            parsedContent = aiResult.ParsedContent;
+                            extractedSkills = aiResult.ExtractedSkills;
+                            cvIssues = aiResult.CVIssues;
+                            cvScore = aiResult.CVScore;
+                            suggestedJobTitles = aiResult.SuggestedJobTitles;
+                            recommendedSkills = aiResult.RecommendedSkills;
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -172,9 +189,8 @@ namespace BLL.Services.CvService
                         var globalskill = allGlobalSkills.FirstOrDefault(s =>
                         {
                             var globalLower = s.SkillName.ToLower().Trim();
-                            return globalLower == skillLower
-                                || globalLower.Contains(skillLower)
-                                || skillLower.Contains(globalLower);
+                            // Exact match only — prevents "C" from matching "C++", "CSS", etc.
+                            return globalLower == skillLower;
                         });
 
                         if (globalskill == null)
@@ -338,6 +354,29 @@ CV Text:
             public int CVScore { get; set; } = 0;
             public List<string> SuggestedJobTitles { get; set; } = new();
             public List<string> RecommendedSkills { get; set; } = new();
+        }
+
+        /// <summary>Extracts plain text from a .docx file using OpenXml SDK</summary>
+        private string ExtractTextFromDocx(string filePath)
+        {
+            try
+            {
+                using var doc = WordprocessingDocument.Open(filePath, false);
+                var body = doc.MainDocumentPart?.Document?.Body;
+                if (body == null) return string.Empty;
+
+                var sb = new StringBuilder();
+                foreach (var paragraph in body.Elements<Paragraph>())
+                {
+                    sb.AppendLine(paragraph.InnerText);
+                }
+                return sb.ToString().Trim();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to extract text from .docx file: {FilePath}", filePath);
+                return string.Empty;
+            }
         }
         public async Task<ServiceResult<List<CvRS>>> GetUserCvsAsync(string userId)
         {

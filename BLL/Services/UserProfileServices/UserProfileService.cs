@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -108,9 +108,9 @@ namespace BLL.Services.UserProfileServices
                 // UserName
                 if (form.ContainsKey("UserName"))
                 {
-                    profile.UserName = string.IsNullOrWhiteSpace(request.UserName)
-                        ? null   // delete
-                        : request.UserName;
+                    if (string.IsNullOrWhiteSpace(request.UserName))
+                        return ServiceResult<string>.Failure("UserName cannot be empty.");
+                    profile.UserName = request.UserName;
                 }
 
                 // FirstName
@@ -152,6 +152,7 @@ namespace BLL.Services.UserProfileServices
                         ? null
                         : request.Location;
                 }
+
                 profile.UpdatedAt = DateTime.UtcNow;
 
                 await _userprofileRepository.SaveChangesAsync();

@@ -1,4 +1,4 @@
-﻿using BLL.Dtos.AuthDtos;
+using BLL.Dtos.AuthDtos;
 using BLL.Services.AuthService;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -38,8 +38,8 @@ namespace Path_Finder.Controllers
 
             var result = await _authService.ConfirmEmailAsync(model);
 
-            // If the message is not success, return BadRequest
-            if (result.Message != "Email confirmed successfully! You can now log in." && result.Message != "Email is already confirmed. You can log in directly.")
+            // If email is not confirmed successfully, return BadRequest
+            if (!result.IsAuthenticated && result.Message != "Email is already confirmed. You can log in directly.")
                 return BadRequest(result.Message);
 
             return Ok(result);
@@ -90,7 +90,7 @@ namespace Path_Finder.Controllers
 
             var result = await _authService.ResetPasswordAsync(model);
 
-            if (result.Message != "Password has been reset successfully!")
+            if (!result.IsAuthenticated && result.Message != "Password has been reset successfully!")
                 return BadRequest(result.Message);
 
             return Ok(result);
