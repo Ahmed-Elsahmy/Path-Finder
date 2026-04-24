@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using BLL.Common;
 using BLL.Dtos.CourseProgressDtos;
+using BLL.Services.NotificationServices;
 using DAL.Helper.Enums;
 using DAL.Models;
 using DAL.Repository;
@@ -18,6 +19,7 @@ namespace BLL.Services.CourseProgressService
         private readonly IRepository<UserSkill> _userSkillRepo;
         private readonly IRepository<CareerPathCourse> _careerPathCourseRepo;
         private readonly IRepository<UserCareerPath> _userCareerPathRepo;
+        private readonly INotificationService _notificationService;
 
         private readonly IMapper _mapper;
         private readonly ILogger<CourseProgressService> _logger;
@@ -29,6 +31,7 @@ namespace BLL.Services.CourseProgressService
             IRepository<CareerPathCourse> careerPathCourseRepo,
             IRepository<UserCareerPath> userCareerPathRepo,
             IRepository<UserSkill> userSkillRepo,
+            INotificationService notificationService,
             IMapper mapper,
             ILogger<CourseProgressService> logger)
         {
@@ -40,6 +43,7 @@ namespace BLL.Services.CourseProgressService
             _logger = logger;
             _careerPathCourseRepo = careerPathCourseRepo;
             _userCareerPathRepo = userCareerPathRepo;
+            _notificationService = notificationService;
         }
 
         // ====================================================
@@ -180,6 +184,24 @@ namespace BLL.Services.CourseProgressService
                 if (justCompletedNow)
                 {
                     await AssignCourseSkillsToUserAsync(userId, progress.CourseId, progress.Course.Name);
+
+                    try
+                    {
+                        var title = $"Achievement unlocked: Completed {progress.Course.Name}";
+                        var message = $"Congratulations! You completed \"{progress.Course.Name}\".";
+
+                        await _notificationService.CreateForUserAsync(
+                            userId,
+                            "Achievement",
+                            title,
+                            message,
+                            "Course",
+                            progress.CourseId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to create/publish completion notification for user {UserId} and course {CourseId}", userId, progress.CourseId);
+                    }
                 }
 
                 return ServiceResult<string>.Success($"Progress updated. ({progress.CompletedLessons}/{totalLessons} lessons completed - {progress.ProgressPercentage}%).");
@@ -264,11 +286,40 @@ namespace BLL.Services.CourseProgressService
 
                 var percentage = Math.Clamp((int)Math.Round(average), 0, 100);
                 userPath.ProgressPercentage = percentage;
-
+                bool justCompletedNow = userPath.Status != CareerPathStatus.Completed;
                 if (percentage >= 100)
                 {
+                    if (userPath.Status != CareerPathStatus.Completed)
+                        justCompletedNow = true;
+                    else
+                        justCompletedNow = false;
+
                     userPath.Status = CareerPathStatus.Completed;
                     userPath.CompletedAt ??= DateTime.UtcNow;
+
+                    if (justCompletedNow)
+                    {
+                        try
+                        {
+                            var title = $"Achievement unlocked: Career Path Completed";
+                            var message = $"Congratulations! You completed this career path.";
+
+                            await _notificationService.CreateForUserAsync(
+                                userId,
+                                "Achievement",
+                                title,
+                                message,
+                                "CareerPath",
+                                userPath.CareerPathId);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex,
+                                "Failed to create/publish completion notification for user {UserId} and career path {CareerPathId}",
+                                userId,
+                                userPath.CareerPathId);
+                        }
+                    }
                 }
                 else if (percentage <= 0)
                 {

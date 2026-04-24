@@ -24,24 +24,32 @@ namespace BLL.Services.JobSourceServices
             _logger = logger;
         }
 
-        public async Task<ServiceResult<List<JobSourceRS>>> GetAllSourcesAsync(bool onlyActive = true)
+        public async Task<ServiceResult<List<JobSourceRS>>> GetAllSourcesAsync(
+            bool onlyActive = true)
         {
             try
             {
-                var query = _repository.Query()
-                    .Include(js => js.Jobs);
+                var sources = await _repository.Query()
+                    .AsNoTracking()
+                    .Where(js => !onlyActive || js.IsActive)
+                    .OrderBy(js => js.SourceName)
+                    .Select(js => new JobSourceRS
+                    {
+                        SourceId = js.SourceId,
+                        SourceName = js.SourceName,
+                        IsActive = js.IsActive
+                    })
+                    .ToListAsync();
 
-                if (onlyActive)
-                    query = (Microsoft.EntityFrameworkCore.Query.IIncludableQueryable<JobSource, ICollection<Job>>)query.Where(js => js.IsActive);
-
-                var sources = await query.OrderBy(js => js.SourceName).ToListAsync();
-                var result = _mapper.Map<List<JobSourceRS>>(sources);
-                return ServiceResult<List<JobSourceRS>>.Success(result);
+                return ServiceResult<List<JobSourceRS>>.Success(sources);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error retrieving job sources");
-                return ServiceResult<List<JobSourceRS>>.Failure("Error retrieving job sources.");
+                _logger.LogError(ex, "Error retrieving job sources (OnlyActive: {OnlyActive})", onlyActive);
+
+                return ServiceResult<List<JobSourceRS>>.Failure(
+                    ex.InnerException?.Message ?? ex.Message
+                );
             }
         }
 

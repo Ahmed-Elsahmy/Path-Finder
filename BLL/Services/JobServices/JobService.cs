@@ -1,6 +1,7 @@
-using AutoMapper;
+﻿using AutoMapper;
 using BLL.Common;
 using BLL.Dtos.JobDtos;
+using BLL.Services.NotificationServices;
 using DAL.Models;
 using DAL.Repository;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +18,7 @@ namespace BLL.Services.JobServices
         private readonly IRepository<JobSkillRequirement> _skillReqRepository;
         private readonly IRepository<Skill> _skillRepository;
         private readonly IRepository<UserSkill> _userSkillRepository;
+        private readonly INotificationService _notificationService;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IConfiguration _config;
         private readonly IMapper _mapper;
@@ -27,6 +29,7 @@ namespace BLL.Services.JobServices
             IRepository<JobSkillRequirement> skillReqRepository,
             IRepository<Skill> skillRepository,
             IRepository<UserSkill> userSkillRepository,
+            INotificationService notificationService,
             IHttpClientFactory httpClientFactory,
             IConfiguration config,
             IMapper mapper,
@@ -36,6 +39,7 @@ namespace BLL.Services.JobServices
             _skillReqRepository = skillReqRepository;
             _skillRepository = skillRepository;
             _userSkillRepository = userSkillRepository;
+            _notificationService = notificationService;
             _httpClientFactory = httpClientFactory;
             _config = config;
             _mapper = mapper;
@@ -124,7 +128,7 @@ namespace BLL.Services.JobServices
                 await _jobRepository.AddAsync(job);
                 await _jobRepository.SaveChangesAsync();
 
-                // AI: Extract skills INLINE (not background) so they're available immediately
+                // AI: Extract skills INLINE (not background)
                 if (!string.IsNullOrWhiteSpace(request.Description) || !string.IsNullOrWhiteSpace(request.JobTitle))
                 {
                     try
@@ -135,6 +139,86 @@ namespace BLL.Services.JobServices
                     {
                         _logger.LogWarning(ex, "AI skill extraction failed for job {JobId}, job still created", job.JobId);
                     }
+                }
+
+                try
+                {
+                    var requiredSkillIds = await _skillReqRepository.Query()
+                        .Where(sr => sr.JobId == job.JobId)
+                        .Select(sr => sr.SkillId)
+                        .Distinct()
+                        .ToListAsync();
+
+                    if (requiredSkillIds.Any())
+                    {
+                        var matchedUsers = await _userSkillRepository.Query()
+                            .Where(us => requiredSkillIds.Contains(us.SkillId))
+                            .GroupBy(us => us.UserId)
+                            .Select(g => new
+                            {
+                                UserId = g.Key,
+                                MatchCount = g.Count()
+                            })
+                            .OrderByDescending(x => x.MatchCount)
+                            .Take(200)
+                            .ToListAsync();
+
+                        if (matchedUsers.Any())
+                        {
+                            var title = $"🔥 New Job Match: {job.JobTitle}";
+
+                            var parts = new List<string>();
+
+                            if (!string.IsNullOrWhiteSpace(job.CompanyName))
+                                parts.Add($"🏢 {job.CompanyName}");
+
+                            if (!string.IsNullOrWhiteSpace(job.Location))
+                                parts.Add($"📍 {job.Location}");
+
+                            if (!string.IsNullOrWhiteSpace(job.JobType))
+                                parts.Add($"💼 {job.JobType}");
+
+                            if (job.SalaryMin.HasValue || job.SalaryMax.HasValue)
+                            {
+                                var salary = $"{job.SalaryMin?.ToString("N0") ?? "?"} - {job.SalaryMax?.ToString("N0") ?? "?"}";
+                                parts.Add($"💰 {salary}");
+                            }
+
+                            var details = parts.Any() ? string.Join(" | ", parts) : null;
+
+                            // 🔥 send per-user notification with match strength
+                            foreach (var user in matchedUsers)
+                            {
+                                try
+                                {
+                                    var matchInfo = $"🔥 {user.MatchCount} skill(s) matched";
+
+                                    var message = details != null
+                                        ? $"{job.JobTitle}\n{details}\n\n{matchInfo}\n✨ Matches your profile. Check it out!"
+                                        : $"{job.JobTitle}\n\n{matchInfo}\n✨ Matches your profile. Check it out!";
+
+                                    await _notificationService.CreateForUserAsync(
+                                        user.UserId,
+                                        "JobMatch",
+                                        title,
+                                        message,
+                                        "Job",
+                                        job.JobId);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning(ex,
+                                        "Failed to notify user {UserId} about job {JobId}",
+                                        user.UserId,
+                                        job.JobId);
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to create/publish job match notifications for JobId {JobId}", job.JobId);
                 }
 
                 return ServiceResult<string>.Success("Job created successfully.");

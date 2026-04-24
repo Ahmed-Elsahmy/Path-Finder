@@ -34,6 +34,9 @@ using BLL.Services.JobApplicationServices;
 using BLL.Services.JobServices;
 using BLL.Services.JobSourceServices;
 using BLL.Services.SavedJobServices;
+using BLL.Services.NotificationServices;
+using Path_Finder.Hubs;
+using Path_Finder.Realtime;
 
 namespace Path_Finder
 {
@@ -109,6 +112,8 @@ namespace Path_Finder
 
                 builder.Services.AddAutoMapper(typeof(MappingProfile).Assembly);
 
+                builder.Services.AddSignalR();
+
                 builder.Services.AddScoped<IAuthService, AuthService>();
                 builder.Services.AddScoped<IEmailService, EmailService>();
                 builder.Services.AddScoped<ISkillService, SkillService>();
@@ -130,6 +135,9 @@ namespace Path_Finder
                 builder.Services.AddScoped<IJobService, JobService>();
                 builder.Services.AddScoped<IJobSourceService, JobSourceService>();
                 builder.Services.AddScoped<ISavedJobService, SavedJobService>();
+
+                builder.Services.AddScoped<INotificationPublisher, SignalRNotificationPublisher>();
+                builder.Services.AddScoped<INotificationService, NotificationService>();
 
                 // JWT Configuration
                 builder.Services.Configure<JWT>(builder.Configuration.GetSection("JWT"));
@@ -175,6 +183,19 @@ namespace Path_Finder
                  };
                  o.Events = new JwtBearerEvents
                  {
+                     OnMessageReceived = context =>
+                     {
+                         var accessToken = context.Request.Query["access_token"];
+                         var path = context.HttpContext.Request.Path;
+
+                         if (!string.IsNullOrWhiteSpace(accessToken) &&
+                             path.StartsWithSegments("/hubs/notifications"))
+                         {
+                             context.Token = accessToken;
+                         }
+
+                         return Task.CompletedTask;
+                     },
                      OnTokenValidated = async context =>
                      {
                          var userManager = context.HttpContext.RequestServices
@@ -222,6 +243,7 @@ namespace Path_Finder
                 app.UseAuthentication();
                 app.UseAuthorization();
 
+                app.MapHub<NotificationHub>("/hubs/notifications");
                 app.MapControllers();
                 using (var scope = app.Services.CreateScope())
                 {

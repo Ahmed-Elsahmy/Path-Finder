@@ -96,6 +96,17 @@ namespace DAL.Models
             modelBuilder.Entity<SavedJob>()
                 .HasIndex(sj => new { sj.UserId, sj.JobId })
                 .IsUnique(); // Prevent duplicate saves
+
+            modelBuilder.Entity<Notification>()
+                .HasIndex(n => new { n.UserId, n.IsRead });
+
+            modelBuilder.Entity<Notification>()
+                .Property(n => n.CreatedAt)
+                .HasDefaultValueSql("GETUTCDATE()");
+
+            modelBuilder.Entity<Notification>()
+                .Property(n => n.IsRead)
+                .HasDefaultValue(false);
         }
 
         public DbSet<CV> CVs { get; set; }
@@ -120,6 +131,8 @@ namespace DAL.Models
         public DbSet<JobSkillRequirement> JobSkillRequirements { get; set; }
         public DbSet<JobApplication> JobApplications { get; set; }
         public DbSet<SavedJob> SavedJobs { get; set; }
+
+        public DbSet<Notification> Notifications { get; set; }
 
     }
 }
