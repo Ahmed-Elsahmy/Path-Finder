@@ -1,6 +1,8 @@
 ﻿using AutoMapper;
 using BLL.Common;
 using BLL.Dtos.CourseDtos;
+using BLL.Services.NotificationServices;
+using DAL.Helper.Enums;
 using DAL.Models;
 using DAL.Repository;
 using Microsoft.AspNetCore.Http;
@@ -19,6 +21,10 @@ namespace BLL.Services.CourseService
         private readonly IRepository<CoursePlatform> _platformRepo;
         private readonly IRepository<Category> _categoryRepo;
         private readonly IRepository<SubCategory> _subCategoryRepo;
+        private readonly IRepository<CourseProgress> _progressRepo;
+        private readonly IRepository<CareerPathCourse> _careerPathCourseRepo;
+        private readonly IRepository<UserCareerPath> _userCareerPathRepo;
+        private readonly  INotificationService _notificationService;
         private readonly IMapper _mapper;
         private readonly ILogger<CourseService> _logger;
 
@@ -34,6 +40,8 @@ namespace BLL.Services.CourseService
             IRepository<CoursePlatform> platformRepo,
             IRepository<Category> categoryRepo,
             IRepository<SubCategory> subCategoryRepo,
+            IRepository<CourseProgress> progressRepo,
+            INotificationService notificationService,
             IMapper mapper,
             ILogger<CourseService> logger,
             IConfiguration config,
@@ -44,6 +52,8 @@ namespace BLL.Services.CourseService
             _platformRepo = platformRepo;
             _categoryRepo = categoryRepo;
             _subCategoryRepo = subCategoryRepo;
+            _progressRepo = progressRepo;
+            _notificationService = notificationService;
             _mapper = mapper;
             _logger = logger;
             _config = config;
@@ -127,7 +137,7 @@ namespace BLL.Services.CourseService
             }
         }
 
- 
+
         public async Task<ServiceResult<string>> CreateCourseAsync(CourseRQ request)
         {
             try
@@ -155,12 +165,72 @@ namespace BLL.Services.CourseService
 
                 await ExtractAndAssignSkillsAsync(course.Id, course.Name, course.Description);
 
+                // 🔥 NEW: notify users (if course already linked to career paths)
+                await NotifyCareerPathUsersAboutNewCourseAsync(course.Id, course.Name);
+
                 return ServiceResult<string>.Success("Course created successfully with skills assigned.");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating course");
                 return ServiceResult<string>.Failure("An error occurred while creating the course.", ServiceErrorCode.UpstreamServiceError);
+            }
+        }
+        private async Task NotifyCareerPathUsersAboutNewCourseAsync(int courseId, string courseName)
+        {
+            try
+            {
+                // 🔥 get career paths that include this course
+                var relatedPathIds = await _careerPathCourseRepo.Query()
+                    .Where(x => x.CourseId == courseId)
+                    .Select(x => x.CareerPathId)
+                    .Distinct()
+                    .ToListAsync();
+
+                if (!relatedPathIds.Any())
+                    return;
+
+                // 🔥 get distinct users (avoid duplicate notifications)
+                var userIds = await _userCareerPathRepo.Query()
+                    .Where(x =>
+                        relatedPathIds.Contains(x.CareerPathId) &&
+                        x.Status != CareerPathStatus.Cancelled)
+                    .Select(x => x.UserId)
+                    .Distinct()
+                    .ToListAsync();
+
+                if (!userIds.Any())
+                    return;
+
+                foreach (var userId in userIds)
+                {
+                    try
+                    {
+                        var title = $"New course added to your career path 🚀";
+                        var message = $"A new course \"{courseName}\" was added to your career path.";
+
+                        await _notificationService.CreateForUserAsync(
+                            userId,
+                            "Update",
+                            title,
+                            message,
+                            "Course",
+                            courseId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex,
+                            "Failed to notify user {UserId} about new course {CourseId}",
+                            userId,
+                            courseId);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Error notifying users about new course {CourseId}",
+                    courseId);
             }
         }
         private async Task ExtractAndAssignSkillsAsync(int courseId, string courseName, string? courseDescription)
@@ -304,8 +374,6 @@ Description: {courseDescription}";
                 _logger.LogError(ex, "Skill extraction failed for CourseId: {CourseId}", courseId);
             }
         }
-
-
         public async Task<ServiceResult<string>> UpdateCourseAsync(int id, UpdateCourseRQ request, IFormCollection form)
         {
             try
@@ -352,6 +420,33 @@ Description: {courseDescription}";
 
                 _courseRepo.Update(course);
                 await _courseRepo.SaveChangesAsync();
+
+                try
+                {
+                    var enrolledUserIds = await _progressRepo.Query()
+                        .Where(p => p.CourseId == course.Id)
+                        .Select(p => p.UserId)
+                        .Distinct()
+                        .ToListAsync();
+
+                    if (enrolledUserIds.Any())
+                    {
+                        var title = $"Course updated: {course.Name}";
+                        var message = "A course you are enrolled in has been updated. Check what's new!";
+
+                        await _notificationService.CreateForUsersAsync(
+                            enrolledUserIds,
+                            "CourseUpdate",
+                            title,
+                            message,
+                            "Course",
+                            course.Id);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to create/publish course update notifications for CourseId {CourseId}", course.Id);
+                }
 
                 return ServiceResult<string>.Success("Course updated successfully.");
             }

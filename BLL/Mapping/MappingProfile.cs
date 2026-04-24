@@ -12,6 +12,7 @@ using BLL.Dtos.SkillDtos;
 using BLL.Dtos.UserCarrerPathDtos;
 using BLL.Dtos.UserExperienceDtos;
 using BLL.Dtos.UserProfileDtos;
+using BLL.Dtos.NotificationDtos;
 using DAL.Models;
 
 namespace BLL.Mapping
@@ -187,6 +188,8 @@ namespace BLL.Mapping
                 .ForMember(dest => dest.CompanyName, opt => opt.MapFrom(src => src.Job != null ? src.Job.CompanyName : ""))
                 .ForMember(dest => dest.Location, opt => opt.MapFrom(src => src.Job != null ? src.Job.Location : ""))
                 .ForMember(dest => dest.JobType, opt => opt.MapFrom(src => src.Job != null ? src.Job.JobType : ""));
+
+            CreateMap<Notification, NotificationRS>();
         }
     }
 }
