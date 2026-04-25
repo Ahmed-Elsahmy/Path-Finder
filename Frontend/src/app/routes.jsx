@@ -18,6 +18,7 @@ import JobsScreen from "../features/jobs/presentation/screens/JobsScreen.jsx";
 import ProfileScreen from "../features/profile/presentation/screens/ProfileScreen.jsx";
 import CvManagerScreen from "../features/cv/presentation/screens/CvManagerScreen.jsx";
 import ChatbotScreen from "../features/chatbot/presentation/screens/ChatbotScreen.jsx";
+import CareerMatchScreen from "../features/careerMatch/presentation/screens/CareerMatchScreen.jsx";
 
 // ----------------------------------------------------
 // Middleware: مكون حماية المسارات (يمنع الدخول بدون Token)
@@ -101,6 +102,17 @@ const AppRoutes = () => {
             <DashboardLayout>
               {/* 💡 تم استبدال الكود القديم بصفحة الداشبورد العصرية */}
               <DashboardScreen />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/career-match"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <CareerMatchScreen />
             </DashboardLayout>
           </ProtectedRoute>
         }

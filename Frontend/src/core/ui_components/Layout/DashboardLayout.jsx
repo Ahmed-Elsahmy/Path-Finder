@@ -20,25 +20,23 @@ const DashboardLayout = ({ children }) => {
     : null;
 
   const navItems = [
-    { name: "Dashboard", path: "/dashboard", icon: "📊" },
-    { name: "Courses", path: "/courses", icon: "📚" },
-    { name: "Jobs", path: "/jobs", icon: "💼" },
-    { name: "Profile", path: "/profile", icon: "👤" },
-    { name: "CV Manager", path: "/cv-manager", icon: "📄" },
-    { name: "AI Assistant", path: "/ai-assistant", icon: "🤖" },
+    { name: "Dashboard", path: "/dashboard", icon: "D" },
+    { name: "Career Match", path: "/career-match", icon: "CM" },
+    { name: "Courses", path: "/courses", icon: "C" },
+    { name: "Jobs", path: "/jobs", icon: "J" },
+    { name: "Profile", path: "/profile", icon: "P" },
+    { name: "CV Manager", path: "/cv-manager", icon: "CV" },
+    { name: "AI Assistant", path: "/ai-assistant", icon: "AI" },
   ];
 
   return (
     <div className="min-h-screen bg-slate-50/50 font-sans flex flex-col">
-      {/* Top Navigation Bar - القائمة العلوية الجديدة */}
       <header className="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm px-6 h-20 flex items-center justify-between">
-        {/* Logo Section */}
         <div className="flex items-center gap-8">
           <h2 className="text-2xl font-black text-primary tracking-tight pr-6 border-r border-gray-100">
             Path Finder
           </h2>
 
-          {/* Navigation Links - الروابط أصبحت في المنتصف/يسار اللوجو */}
           <nav className="hidden lg:flex items-center gap-2">
             {navItems.map((item) => (
               <Link
@@ -50,21 +48,22 @@ const DashboardLayout = ({ children }) => {
                     : "text-gray-500 hover:bg-gray-50 hover:text-primary"
                 }`}
               >
-                <span>{item.icon}</span>
+                <span className="inline-flex min-w-7 justify-center text-[11px] font-black uppercase">
+                  {item.icon}
+                </span>
                 {item.name}
               </Link>
             ))}
           </nav>
         </div>
 
-        {/* User Actions Section */}
         <div className="flex items-center gap-4">
           <button
             onClick={handleLogout}
             className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all font-bold text-sm flex items-center gap-2 mr-2"
             title="Logout"
           >
-            <span>🚪</span> <span className="hidden md:block">Logout</span>
+            <span>LO</span> <span className="hidden md:block">Logout</span>
           </button>
 
           <Link
@@ -100,13 +99,11 @@ const DashboardLayout = ({ children }) => {
         </div>
       </header>
 
-      {/* Main Content Area - المحتوى الآن يأخذ العرض الكامل */}
       <main className="flex-1 p-6 lg:p-10 max-w-7xl mx-auto w-full">
-        {/* عنوان الصفحة الحالي */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-800 capitalize">
-            {navItems.find((i) => location.pathname.includes(i.path))?.name ||
-              "Overview"}
+            {navItems.find((item) => location.pathname.includes(item.path))
+              ?.name || "Overview"}
           </h1>
           <div className="h-1 w-12 bg-primary rounded-full mt-2"></div>
         </div>

@@ -59,6 +59,12 @@ const DashboardScreen = () => {
               Update Profile
             </Link>
             <Link
+              to="/career-match"
+              className="bg-[#0f766e] text-white px-8 py-3.5 rounded-2xl font-black text-sm hover:bg-[#0b5f59] transition-all active:scale-95 shadow-lg shadow-cyan-950/20"
+            >
+              Take Career Match
+            </Link>
+            <Link
               to="/ai-assistant"
               className="bg-white/10 backdrop-blur-md text-white border border-white/20 px-8 py-3.5 rounded-2xl font-black text-sm hover:bg-white/20 transition-all active:scale-95"
             >

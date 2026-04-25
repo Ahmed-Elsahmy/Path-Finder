@@ -72,6 +72,18 @@ namespace DAL.Models
                 .HasColumnType("nvarchar(max)")
                 .Metadata.SetValueComparer(nullableListComparer);
 
+            modelBuilder.Entity<Question>()
+                .Property(q => q.Options)
+                .HasConversion(
+                    v => JsonSerializer.Serialize(v ?? new List<string>(), (JsonSerializerOptions?)null),
+                    v => string.IsNullOrWhiteSpace(v)
+                        ? new List<string>()
+                        : JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null)
+                          ?? new List<string>()
+                )
+                .HasColumnType("nvarchar(max)")
+                .Metadata.SetValueComparer(nullableListComparer);
+
             modelBuilder.Entity<UserExperience>()
                .Property(x => x.EmploymentType)
                    .HasConversion<string>();
@@ -107,6 +119,30 @@ namespace DAL.Models
             modelBuilder.Entity<Notification>()
                 .Property(n => n.IsRead)
                 .HasDefaultValue(false);
+
+            modelBuilder.Entity<Questionnaire>()
+                .Property(q => q.IsActive)
+                .HasDefaultValue(true);
+
+            modelBuilder.Entity<Questionnaire>()
+                .Property(q => q.CreatedAt)
+                .HasDefaultValueSql("GETUTCDATE()");
+
+            modelBuilder.Entity<Question>()
+                .Property(q => q.IsRequired)
+                .HasDefaultValue(true);
+
+            modelBuilder.Entity<Question>()
+                .HasIndex(q => new { q.QuestionnaireId, q.OrderNumber })
+                .IsUnique();
+
+            modelBuilder.Entity<QuestionnaireResponse>()
+                .Property(r => r.AnsweredAt)
+                .HasDefaultValueSql("GETUTCDATE()");
+
+            modelBuilder.Entity<QuestionnaireResponse>()
+                .HasIndex(r => new { r.UserId, r.QuestionId })
+                .IsUnique();
         }
 
         public DbSet<CV> CVs { get; set; }
@@ -124,6 +160,9 @@ namespace DAL.Models
         public DbSet<CareerPath> CareerPaths { get; set; }
         public DbSet<UserCareerPath> UserCareerPaths { get; set; }
         public DbSet<CareerPathCourse> CareerPathCourses { get; set; }
+        public DbSet<Questionnaire> Questionnaires { get; set; }
+        public DbSet<Question> Questions { get; set; }
+        public DbSet<QuestionnaireResponse> QuestionnaireResponses { get; set; }
 
         // ═══ Job Module ═══
         public DbSet<JobSource> JobSources { get; set; }
