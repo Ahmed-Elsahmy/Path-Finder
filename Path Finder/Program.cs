@@ -35,6 +35,7 @@ using BLL.Services.JobServices;
 using BLL.Services.JobSourceServices;
 using BLL.Services.SavedJobServices;
 using BLL.Services.NotificationServices;
+using BLL.Services.QuestionnaireServices;
 using Path_Finder.Hubs;
 using Path_Finder.Realtime;
 
@@ -138,6 +139,7 @@ namespace Path_Finder
 
                 builder.Services.AddScoped<INotificationPublisher, SignalRNotificationPublisher>();
                 builder.Services.AddScoped<INotificationService, NotificationService>();
+                builder.Services.AddScoped<IQuestionnaireService, QuestionnaireService>();
 
                 // JWT Configuration
                 builder.Services.Configure<JWT>(builder.Configuration.GetSection("JWT"));

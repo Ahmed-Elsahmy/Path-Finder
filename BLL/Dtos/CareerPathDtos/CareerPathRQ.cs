@@ -13,7 +13,6 @@ namespace BLL.Dtos.CareerPathDtos
         public DifficultyLevel? DifficultyLevel { get; set; }
         [Range(0, 250, ErrorMessage = "Duration in months must be between 0 and 250 Hour.")]
         public int? DurationInMonths { get; set; }
-        [MaxLength(500, ErrorMessage = "Prerequisites cannot exceed 500 characters.")]
         public int? CategoryId { get; set; }
         public int? SubCategoryId { get; set; }
     }

@@ -1,7 +1,11 @@
 import axios from "axios";
 
+const defaultApiBaseUrl = import.meta.env.DEV
+  ? "https://localhost:44330/api"
+  : "https://pathfinder.tryasp.net/api";
+
 export const apiClient = axios.create({
-  baseURL: "https://pathfinder.tryasp.net/api",
+  baseURL: import.meta.env.VITE_API_BASE_URL || defaultApiBaseUrl,
   timeout: 30000,
   headers: {
     "Content-Type": "application/json",
