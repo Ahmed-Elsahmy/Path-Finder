@@ -39,5 +39,9 @@ namespace DAL.Repository
         public IQueryable<T> Query() => _dbSet.AsQueryable();
         public async Task AddRangeAsync(IEnumerable<T> entities)
        => await _dbSet.AddRangeAsync(entities);
+        public void RemoveRange(IEnumerable<T> entities)
+        {
+            _dbSet.RemoveRange(entities);
+        }
     }
 }

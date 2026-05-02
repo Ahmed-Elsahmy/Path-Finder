@@ -3,6 +3,7 @@ using BLL.Dtos.CareerPathDtos;
 using BLL.Common;
 using BLL.Services.CareerPathServices;
 using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace API.Controllers
 {
@@ -38,6 +39,17 @@ namespace API.Controllers
             var result = await _careerPathService.GetAllCareerPathsAsync();
 
             if (result.IsSuccess) return Ok(result.Data);
+            return HandleResult(result);
+        }
+        [HttpGet("search")]
+        public async Task<IActionResult> SearchCourses([FromQuery] string name)
+        {
+            var userId = User.FindFirstValue("uid");
+
+            var result = await _careerPathService.SearchCareerPathsAsync(name, userId);
+
+            if (result.IsSuccess) return Ok(result.Data);
+
             return HandleResult(result);
         }
 

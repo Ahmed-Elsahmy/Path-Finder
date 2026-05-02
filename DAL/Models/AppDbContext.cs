@@ -143,6 +143,9 @@ namespace DAL.Models
             modelBuilder.Entity<QuestionnaireResponse>()
                 .HasIndex(r => new { r.UserId, r.QuestionId })
                 .IsUnique();
+            modelBuilder.Entity<RecentSearch>()
+            .Property(x => x.SearchType)
+                .HasConversion<string>();
         }
 
         public DbSet<CV> CVs { get; set; }
@@ -172,6 +175,8 @@ namespace DAL.Models
         public DbSet<SavedJob> SavedJobs { get; set; }
 
         public DbSet<Notification> Notifications { get; set; }
+        public DbSet<SavedCourse> savedCourses { get; set; }
+        public DbSet<RecentSearch> RecentSearches { get; set; }
 
     }
 }
