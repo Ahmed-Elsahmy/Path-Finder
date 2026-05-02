@@ -38,6 +38,8 @@ using BLL.Services.NotificationServices;
 using BLL.Services.QuestionnaireServices;
 using Path_Finder.Hubs;
 using Path_Finder.Realtime;
+using BLL.Services.SavedCourseServices;
+using BLL.Services.RecentSearchServices;
 
 namespace Path_Finder
 {
@@ -136,10 +138,12 @@ namespace Path_Finder
                 builder.Services.AddScoped<IJobService, JobService>();
                 builder.Services.AddScoped<IJobSourceService, JobSourceService>();
                 builder.Services.AddScoped<ISavedJobService, SavedJobService>();
+                builder.Services.AddScoped<ISavedCourseService, SavedCourseService>();
 
                 builder.Services.AddScoped<INotificationPublisher, SignalRNotificationPublisher>();
                 builder.Services.AddScoped<INotificationService, NotificationService>();
                 builder.Services.AddScoped<IQuestionnaireService, QuestionnaireService>();
+                builder.Services.AddScoped<IRecentSearchService, RecentSearchService>();
 
                 // JWT Configuration
                 builder.Services.Configure<JWT>(builder.Configuration.GetSection("JWT"));

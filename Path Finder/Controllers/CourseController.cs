@@ -1,4 +1,5 @@
-﻿using BLL.Common;
+﻿using System.Security.Claims;
+using BLL.Common;
 using BLL.Dtos.CourseDtos;
 using BLL.Services.CourseService;
 using Microsoft.AspNetCore.Authorization;
@@ -30,6 +31,17 @@ namespace Path_Finder.Controllers
                 ServiceErrorCode.ValidationError => BadRequest(new { Message = result.ErrorMessage }),
                 _ => BadRequest(new { Message = result.ErrorMessage })
             };
+        }
+        [HttpGet("search")]
+        public async Task<IActionResult> SearchCourses([FromQuery] string name)
+        {
+            var userId = User.FindFirstValue("uid");
+
+            var result = await _courseService.SearchCoursesAsync(name, userId);
+
+            if (result.IsSuccess) return Ok(result.Data);
+
+            return HandleResult(result);
         }
         [HttpGet("all")]
         public async Task<IActionResult> GetAllCourses([FromQuery] CourseFilterRQ filter)
