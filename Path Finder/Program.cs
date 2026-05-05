@@ -40,6 +40,8 @@ using Path_Finder.Hubs;
 using Path_Finder.Realtime;
 using BLL.Services.SavedCourseServices;
 using BLL.Services.RecentSearchServices;
+using BLL.Services.DashbordServices;
+using DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing;
 
 namespace Path_Finder
 {
@@ -139,7 +141,7 @@ namespace Path_Finder
                 builder.Services.AddScoped<IJobSourceService, JobSourceService>();
                 builder.Services.AddScoped<ISavedJobService, SavedJobService>();
                 builder.Services.AddScoped<ISavedCourseService, SavedCourseService>();
-
+                builder.Services.AddScoped<IUserDashboardService, UserDashboardService>();
                 builder.Services.AddScoped<INotificationPublisher, SignalRNotificationPublisher>();
                 builder.Services.AddScoped<INotificationService, NotificationService>();
                 builder.Services.AddScoped<IQuestionnaireService, QuestionnaireService>();
