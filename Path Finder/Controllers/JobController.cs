@@ -3,6 +3,7 @@ using BLL.Dtos.JobDtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using BLL.Common;
 
 namespace Path_Finder.Controllers
 {
@@ -19,6 +20,19 @@ namespace Path_Finder.Controllers
         }
 
         private string? GetUserId() => User.FindFirstValue("uid");
+        private IActionResult HandleResult<T>(ServiceResult<T> result)
+        {
+            if (result.IsSuccess)
+                return Ok(new { Data = result.Data });
+
+            return result.ErrorCode switch
+            {
+                ServiceErrorCode.NotFound => NotFound(new { Message = result.ErrorMessage }),
+                ServiceErrorCode.UpstreamServiceError => StatusCode(503, new { Message = result.ErrorMessage }),
+                ServiceErrorCode.ValidationError => BadRequest(new { Message = result.ErrorMessage }),
+                _ => BadRequest(new { Message = result.ErrorMessage })
+            };
+        }
 
         [HttpGet]
         public async Task<IActionResult> GetJobs([FromQuery] JobFilterRQ filter)
@@ -32,6 +46,17 @@ namespace Path_Finder.Controllers
         {
             var result = await _service.GetJobByIdAsync(id);
             return result.IsSuccess ? Ok(result.Data) : BadRequest(new { Message = result.ErrorMessage });
+        }
+        [HttpGet("search")]
+        public async Task<IActionResult> SearchJobs([FromQuery] string name)
+        {
+            var userId = User.FindFirstValue("uid");
+
+            var result = await _service.SearchJobsAsync(name, userId);
+
+            if (result.IsSuccess) return Ok(result.Data);
+
+            return HandleResult(result);
         }
 
         [HttpPost]

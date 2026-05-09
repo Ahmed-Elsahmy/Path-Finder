@@ -273,7 +273,6 @@ namespace BLL.Services.AuthService
                 var emailBody = $"<h1> Hello From Path Finder </h1> <h1>Reset Your Password</h1><p>Your 6-digit password reset code is: <strong>{otp}</strong></p><p>This code will expire shortly , Path Finder (Team).</p>";
 
                 await _emailService.SendEmailAsync(user.Email, "Path Finder : Your Password Reset Code", emailBody);
-                await _userManager.UpdateSecurityStampAsync(user);
 
                 return new AuthModel
                 {
@@ -316,7 +315,7 @@ namespace BLL.Services.AuthService
                     var errors = string.Join(", ", result.Errors.Select(e => e.Description));
                     return new AuthModel { Message = errors };
                 }
-
+                await _userManager.UpdateSecurityStampAsync(user);
                 return new AuthModel { Message = "Password has been reset successfully!", Username = user.UserName, Email = user.Email };
             }
             catch (Exception ex)

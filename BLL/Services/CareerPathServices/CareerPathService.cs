@@ -9,6 +9,8 @@ using AutoMapper;
 using BLL.Common;
 using BLL.Dtos.CareerPathCourseDtos;
 using BLL.Dtos.CareerPathDtos;
+using BLL.Dtos.JobDtos;
+using BLL.Services.RecentSearchServices;
 using DAL.Helper.Enums;
 using DAL.Models;
 using DAL.Repository;
@@ -24,6 +26,7 @@ namespace BLL.Services.CareerPathServices
         private readonly IRepository<CareerPath> _careerpathRepository;
         private readonly IRepository<Course> _courseRepository;
         private readonly IRepository<CareerPathCourse> _careerPathCourseRepository;
+        private readonly IRecentSearchService _recentSearchService;
 
         // FIX 1: Added repositories to validate CategoryId / SubCategoryId exist
         private readonly IRepository<Category> _categoryRepository;
@@ -51,7 +54,8 @@ namespace BLL.Services.CareerPathServices
             IMapper mapper,
             ILogger<CareerPathService> logger,
             IConfiguration config,
-            IHttpClientFactory httpClientFactory)
+            IHttpClientFactory httpClientFactory,
+            IRecentSearchService recentSearchService)
         {
             _careerpathRepository = careerpathRepository;
             _courseRepository = courseRepository;
@@ -63,8 +67,54 @@ namespace BLL.Services.CareerPathServices
             _logger = logger;
             _config = config;
             _httpClientFactory = httpClientFactory;
+            _recentSearchService = recentSearchService;
         }
+        public async Task<ServiceResult<List<CareerPathRS>>> SearchCareerPathsAsync(string name, string? userId = null)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(name))
+                    return ServiceResult<List<CareerPathRS>>
+                        .Failure("Search term is required.", ServiceErrorCode.ValidationError);
 
+                var originalTerm = name;
+                name = name.Trim().ToLower();
+
+                var query = _careerpathRepository.Query();
+
+                var careerPaths = await query
+                    .Take(200)
+                    .ToListAsync();
+
+                var filtered = careerPaths
+                    .Select(c => new
+                    {
+                        CareerPath = c,
+                        Score = FuzzySharp.Fuzz.PartialRatio(c.PathName.ToLower(), name)
+                    })
+                    .Where(x => x.Score >= 50) // adjustable threshold
+                    .OrderByDescending(x => x.Score)
+                    .Take(20)
+                    .Select(x => x.CareerPath)
+                    .ToList();
+
+                if (!string.IsNullOrEmpty(userId))
+                {
+                    await _recentSearchService.AddSearchAsync(userId, originalTerm, RecentSearchType.CarrerPath);
+                }
+
+                var result = _mapper.Map<List<CareerPathRS>>(filtered);
+
+                return ServiceResult<List<CareerPathRS>>.Success(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error searching careerpaths with term {Term}", name);
+
+                return ServiceResult<List<CareerPathRS>>
+                    .Failure("Error searching careerpaths.");
+            }
+        }
         public async Task<ServiceResult<CareerPathRS>> CreateCareerPathAsync(CareerPathRQ request)
         {
             try

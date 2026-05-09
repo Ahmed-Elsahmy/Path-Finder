@@ -14,6 +14,8 @@ using BLL.Dtos.UserExperienceDtos;
 using BLL.Dtos.UserProfileDtos;
 using BLL.Dtos.NotificationDtos;
 using DAL.Models;
+using BLL.Dtos.SavedCourseDtos;
+using BLL.Dtos.RecentSearchDtos;
 
 namespace BLL.Mapping
 {
@@ -190,6 +192,12 @@ namespace BLL.Mapping
                 .ForMember(dest => dest.JobType, opt => opt.MapFrom(src => src.Job != null ? src.Job.JobType : ""));
 
             CreateMap<Notification, NotificationRS>();
+
+            CreateMap<SavedCourse, SavedCourseRS>()
+           .ForMember(dest => dest.Course,
+                      opt => opt.MapFrom(src => src.course));
+
+            CreateMap<RecentSearch, RecentSearchRS>();
         }
     }
 }

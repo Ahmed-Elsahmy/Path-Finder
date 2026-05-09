@@ -15,5 +15,6 @@ namespace DAL.Repository
         Task SaveChangesAsync();
         IQueryable<T> Query();
         Task AddRangeAsync(IEnumerable<T> entities);
+        void RemoveRange(IEnumerable<T> entities);
     }
 }

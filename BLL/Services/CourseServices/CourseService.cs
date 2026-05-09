@@ -2,6 +2,7 @@
 using BLL.Common;
 using BLL.Dtos.CourseDtos;
 using BLL.Services.NotificationServices;
+using BLL.Services.RecentSearchServices;
 using DAL.Helper.Enums;
 using DAL.Models;
 using DAL.Repository;
@@ -25,6 +26,7 @@ namespace BLL.Services.CourseService
         private readonly IRepository<CareerPathCourse> _careerPathCourseRepo;
         private readonly IRepository<UserCareerPath> _userCareerPathRepo;
         private readonly  INotificationService _notificationService;
+        private readonly  IRecentSearchService _recentSearchService;
         private readonly IMapper _mapper;
         private readonly ILogger<CourseService> _logger;
 
@@ -46,7 +48,8 @@ namespace BLL.Services.CourseService
             ILogger<CourseService> logger,
             IConfiguration config,
             IHttpClientFactory httpClientFactory,
-            IServiceScopeFactory scopeFactory)
+            IServiceScopeFactory scopeFactory,
+             IRecentSearchService recentSearchService)
         {
             _courseRepo = courseRepo;
             _platformRepo = platformRepo;
@@ -59,11 +62,58 @@ namespace BLL.Services.CourseService
             _config = config;
             _httpClientFactory = httpClientFactory;
             _scopeFactory = scopeFactory;
+            _recentSearchService = recentSearchService;
         }
 
         // ====================================================
         // 1. Get Courses with Smart Filtering
         // ====================================================
+
+        public async Task<ServiceResult<List<CourseRS>>> SearchCoursesAsync(string name, string? userId = null)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(name))
+                    return ServiceResult<List<CourseRS>>
+                        .Failure("Search term is required.", ServiceErrorCode.ValidationError);
+
+                var temp = name;
+                name = name.Trim().ToLower();
+                var query = _courseRepo.Query();
+
+
+                var courses = await query
+      .Take(200)
+      .ToListAsync();
+
+                var filtered = courses
+                    .Select(j => new
+                    {
+                        course = j,
+                        Score = FuzzySharp.Fuzz.PartialRatio(j.Name.ToLower(), name)
+                    })
+                    .Where(x => x.Score >= 50)
+                    .OrderByDescending(x => x.Score)
+                    .Take(20)
+                    .Select(x => x.course)
+                    .ToList();
+
+                if (!string.IsNullOrEmpty(userId))
+                {
+                    await _recentSearchService.AddSearchAsync(userId, temp, RecentSearchType.Course);
+                }
+
+                var result = _mapper.Map<List<CourseRS>>(filtered);
+
+                return ServiceResult<List<CourseRS>>.Success(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error searching courses with term {Term}", name);
+                return ServiceResult<List<CourseRS>>
+                    .Failure("Error searching courses.");
+            }
+        }
         public async Task<ServiceResult<List<CourseRS>>> GetCoursesAsync(CourseFilterRQ filter)
         {
             try

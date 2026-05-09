@@ -152,6 +152,11 @@ namespace BLL.Services.UserProfileServices
                         ? null
                         : request.Location;
                 }
+                // DateOfBirth
+                if (form.ContainsKey("DateOfBirth"))
+                {
+                    profile.DateOfBirth = request.DateOfBirth;
+                }
 
                 profile.UpdatedAt = DateTime.UtcNow;
 

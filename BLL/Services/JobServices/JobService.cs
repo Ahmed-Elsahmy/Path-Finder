@@ -1,7 +1,10 @@
 ﻿using AutoMapper;
 using BLL.Common;
+using BLL.Dtos.CourseDtos;
 using BLL.Dtos.JobDtos;
 using BLL.Services.NotificationServices;
+using BLL.Services.RecentSearchServices;
+using DAL.Helper.Enums;
 using DAL.Models;
 using DAL.Repository;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +26,7 @@ namespace BLL.Services.JobServices
         private readonly IConfiguration _config;
         private readonly IMapper _mapper;
         private readonly ILogger<JobService> _logger;
+        private readonly IRecentSearchService _recentSearchService;
 
         public JobService(
             IRepository<Job> jobRepository,
@@ -33,7 +37,8 @@ namespace BLL.Services.JobServices
             IHttpClientFactory httpClientFactory,
             IConfiguration config,
             IMapper mapper,
-            ILogger<JobService> logger)
+            ILogger<JobService> logger,
+            IRecentSearchService recentSearchService)
         {
             _jobRepository = jobRepository;
             _skillReqRepository = skillReqRepository;
@@ -44,6 +49,7 @@ namespace BLL.Services.JobServices
             _config = config;
             _mapper = mapper;
             _logger = logger;
+            _recentSearchService=recentSearchService;
         }
 
         public async Task<ServiceResult<List<JobRS>>> GetJobsAsync(JobFilterRQ filter)
@@ -95,7 +101,52 @@ namespace BLL.Services.JobServices
                 return ServiceResult<List<JobRS>>.Failure("Error retrieving jobs.");
             }
         }
+        public async Task<ServiceResult<List<JobRS>>> SearchJobsAsync(string name, string? userId = null)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(name))
+                    return ServiceResult<List<JobRS>>
+                        .Failure("Search term is required.", ServiceErrorCode.ValidationError);
 
+                var temp = name;
+                name = name.Trim().ToLower();
+                var query = _jobRepository.Query();
+
+
+                var jobs = await query
+      .Include(c => c.SkillRequirements)
+      .Take(200) 
+      .ToListAsync();
+
+                var filtered = jobs
+                    .Select(j => new
+                    {
+                        Job = j,
+                        Score = FuzzySharp.Fuzz.PartialRatio(j.JobTitle.ToLower(), name)
+                    })
+                    .Where(x => x.Score >= 50) 
+                    .OrderByDescending(x => x.Score)
+                    .Take(20)
+                    .Select(x => x.Job)
+                    .ToList();
+
+                if (!string.IsNullOrEmpty(userId))
+                {
+                    await _recentSearchService.AddSearchAsync(userId, temp, RecentSearchType.Job);
+                }
+
+                var result = _mapper.Map<List<JobRS>>(filtered);
+
+                return ServiceResult<List<JobRS>>.Success(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error searching jobs with term {Term}", name);
+                return ServiceResult<List<JobRS>>
+                    .Failure("Error searching jobs.");
+            }
+        }
         public async Task<ServiceResult<JobRS>> GetJobByIdAsync(int id)
         {
             try
