@@ -1,17 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace BLL.Dtos.CourseProgressDtos
 {
     public class UpdateProgressRQ
     {
-        [Required(ErrorMessage = "Newly completed lessons are required.")]
-        public int NewlyCompletedLessons { get; set; }
-        [StringLength(1000, ErrorMessage = "Notes cannot exceed 1000 characters.")]
+        [Required(ErrorMessage = "Completed lessons count is required.")]
+        [Range(0, 10000, ErrorMessage = "Lessons count cannot be negative.")]
+        public int CompletedLessons { get; set; } // 🟢 تم التعديل هنا[StringLength(1000, ErrorMessage = "Notes cannot exceed 1000 characters.")]
         public string? Notes { get; set; }
     }
 }

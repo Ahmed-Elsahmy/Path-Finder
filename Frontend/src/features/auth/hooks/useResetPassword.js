@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { authService } from "../services/authService";
 
 export const useResetPassword = () => {
-  // 💡 المسميات هنا تطابق ما يتوقعه الباك إند بالضبط
   const [formData, setFormData] = useState({
     newPassword: "",
     confirmNewPassword: "",
@@ -16,6 +15,7 @@ export const useResetPassword = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    if (error) setError(null);
   };
 
   const handleReset = async (e) => {
@@ -23,25 +23,33 @@ export const useResetPassword = () => {
     setIsLoading(true);
     setError(null);
 
-    // 1. التحقق في الفرونت إند من التطابق
+    // 1. Client-side validation
     if (formData.newPassword !== formData.confirmNewPassword) {
-      setError("كلمات المرور غير متطابقة. يرجى التأكد والمحاولة مجدداً.");
+      setError("Passwords do not match. Please try again.");
       setIsLoading(false);
       return;
     }
 
-    // 2. سحب الإيميل والـ OTP من الذاكرة
+    if (formData.newPassword.length < 8) {
+      setError("Password must be at least 8 characters long.");
+      setIsLoading(false);
+      return;
+    }
+
+    // 2. Retrieve email and OTP from session
     const email = sessionStorage.getItem("pending_email");
     const otp = sessionStorage.getItem("reset_token");
 
     if (!email || !otp) {
-      setError("بيانات التحقق مفقودة. يرجى العودة وطلب الرمز مجدداً.");
+      setError(
+        "Verification data is missing. Please go back and request a new code.",
+      );
       setIsLoading(false);
       return;
     }
 
     try {
-      // 3. الإرسال للباك إند
+      // 3. Send reset request to backend
       await authService.resetPassword({
         email: email,
         otp: otp,
@@ -49,45 +57,41 @@ export const useResetPassword = () => {
         confirmNewPassword: formData.confirmNewPassword,
       });
 
-      // 4. تنظيف الذاكرة بعد النجاح
-      sessionStorage.clear(); // نمسح كل بيانات الـ session بأمان
+      // 4. Clean up session after success
+      sessionStorage.clear();
       navigate("/login");
     } catch (err) {
-      let errorMessage = "حدث خطأ أثناء تغيير كلمة المرور.";
+      let errorMessage = "An error occurred while resetting your password.";
       const responseData = err.response?.data;
 
       if (responseData) {
         if (Array.isArray(responseData)) {
           errorMessage = responseData[0]?.description || errorMessage;
-        } else if (responseData.message) {
-          errorMessage = responseData.message;
+        } else if (responseData.message || responseData.Message) {
+          errorMessage = responseData.message || responseData.Message;
         } else if (typeof responseData === "string") {
           errorMessage = responseData;
         }
       }
 
-      // 5. ترجمة أخطاء الباك إند للمستخدم
-      const lowerCaseError = errorMessage.toLowerCase();
-      if (
-        lowerCaseError.includes("nonalphanumeric") ||
-        lowerCaseError.includes("غير ابجدي")
-      ) {
-        setError("كلمة المرور ضعيفة: يجب أن تحتوي على رمز خاص (مثل @, #, $).");
+      // Translate common backend errors
+      const lower = errorMessage.toLowerCase();
+      if (lower.includes("nonalphanumeric") || lower.includes("غير ابجدي")) {
+        setError(
+          "Password too weak: must contain a special character (e.g. @, #, $).",
+        );
+      } else if (lower.includes("upper") || lower.includes("كبير")) {
+        setError(
+          "Password too weak: must contain an uppercase letter (A-Z).",
+        );
+      } else if (lower.includes("digit") || lower.includes("رقم")) {
+        setError("Password too weak: must contain a digit (0-9).");
       } else if (
-        lowerCaseError.includes("upper") ||
-        lowerCaseError.includes("كبير")
+        lower.includes("invalid token") ||
+        lower.includes("صلاحية") ||
+        lower.includes("expired")
       ) {
-        setError("كلمة المرور ضعيفة: يجب أن تحتوي على حرف إنجليزي كبير.");
-      } else if (
-        lowerCaseError.includes("digit") ||
-        lowerCaseError.includes("رقم")
-      ) {
-        setError("كلمة المرور ضعيفة: يجب أن تحتوي على رقم.");
-      } else if (
-        lowerCaseError.includes("invalid token") ||
-        lowerCaseError.includes("صلاحية")
-      ) {
-        setError("رمز التحقق غير صحيح أو انتهت صلاحيته.");
+        setError("The verification code is invalid or has expired.");
       } else {
         setError(errorMessage);
       }

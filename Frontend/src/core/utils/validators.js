@@ -1,25 +1,50 @@
 // src/core/utils/validators.js
 
-// دالة للتحقق من صحة البريد الإلكتروني
+// Validate email format
 export const isValidEmail = (email) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
 };
 
-// دالة للتحقق من قوة كلمة المرور (على الأقل 8 أحرف)
+// Validate password strength (at least 8 characters)
 export const isStrongPassword = (password) => {
   return password.length >= 8;
 };
 
-// دالة لمعالجة رسائل الخطأ القادمة من الباك إند
+// Extract a user-friendly error message from an Axios error
 export const extractErrorMessage = (error) => {
   if (error.response && error.response.data) {
-    // تتوافق مع طريقة الباك إند في إرسال الأخطاء (ServiceResult أو غيرها)
-    return (
-      error.response.data.message ||
-      error.response.data.title ||
-      "حدث خطأ غير متوقع."
-    );
+    const data = error.response.data;
+
+    // Handle string responses (most common from this API)
+    if (typeof data === "string" && data.length > 0) {
+      return data;
+    }
+
+    // Handle object responses with message field
+    if (data.message || data.Message) {
+      return data.message || data.Message;
+    }
+
+    // Handle validation errors from ASP.NET
+    if (data.errors && typeof data.errors === "object") {
+      const firstField = Object.keys(data.errors)[0];
+      if (firstField) {
+        const msgs = data.errors[firstField];
+        return Array.isArray(msgs) ? msgs[0] : msgs;
+      }
+    }
+
+    if (data.title) {
+      return data.title;
+    }
+
+    return "An unexpected error occurred.";
   }
-  return error.message || "فشل الاتصال بالخادم.";
+
+  if (!error.response) {
+    return "Unable to connect to the server. Please check your connection.";
+  }
+
+  return error.message || "An unexpected error occurred.";
 };
