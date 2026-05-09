@@ -5,90 +5,119 @@ import Button from "../../../../core/ui_components/Button";
 import Input from "../../../../core/ui_components/Input";
 
 const SignUpScreen = () => {
-  const { formData, isLoading, error, handleChange, handleSignUp } =
-    useSignUp();
+  const { formData, isLoading, error, handleChange, handleSignUp } = useSignUp();
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-gray-50">
-      <div className="w-full max-w-md bg-white rounded-2xl p-8 shadow-sm">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold mb-2">Create Account</h1>
-          <p className="text-sm text-gray-500">
-            Create an account to begin your journey in
-            <br />
-            developing your career path
-          </p>
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 py-12">
+      <div className="w-full max-w-lg animate-fade-up">
+        {/* Logo */}
+        <div className="flex items-center justify-center gap-2.5 mb-8">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z"/>
+            </svg>
+          </div>
+          <span className="font-black text-slate-900 text-xl">Path<span className="text-indigo-600">Finder</span></span>
         </div>
 
-        {error && (
-          <div className="mb-4 text-sm text-red-500 text-center bg-red-50 p-2 rounded-lg">
-            {error}
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8">
+          <div className="mb-7 text-center">
+            <h1 className="text-2xl font-black text-slate-900">Create your account</h1>
+            <p className="text-slate-500 text-sm mt-2">Start your personalized career journey today</p>
           </div>
-        )}
 
-        <form onSubmit={handleSignUp} className="space-y-4">
-          <div className="flex gap-4">
+          {error && (
+            <div className="mb-5 flex items-start gap-3 p-4 bg-red-50 border border-red-100 rounded-2xl">
+              <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+              </svg>
+              <p className="text-sm text-red-600 font-medium">{error}</p>
+            </div>
+          )}
+
+          <form onSubmit={handleSignUp} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="First Name"
+                name="firstName"
+                placeholder="John"
+                value={formData.firstName}
+                onChange={handleChange}
+                required
+              />
+              <Input
+                label="Last Name"
+                name="lastName"
+                placeholder="Doe"
+                value={formData.lastName}
+                onChange={handleChange}
+                required
+              />
+            </div>
+
             <Input
-              name="firstName"
-              placeholder="First Name"
-              value={formData.firstName}
+              label="Username"
+              name="userName"
+              placeholder="johndoe"
+              value={formData.userName}
               onChange={handleChange}
+              required
             />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="Phone Number"
+                name="phoneNumber"
+                type="tel"
+                placeholder="+20 100 000 0000"
+                value={formData.phoneNumber}
+                onChange={handleChange}
+              />
+              <Input
+                label="Email Address"
+                name="email"
+                type="email"
+                placeholder="you@example.com"
+                value={formData.email}
+                onChange={handleChange}
+                required
+              />
+            </div>
+
             <Input
-              name="lastName"
-              placeholder="Last Name"
-              value={formData.lastName}
+              label="Password"
+              name="password"
+              type="password"
+              placeholder="Min. 8 characters"
+              value={formData.password}
               onChange={handleChange}
+              hint="Must contain uppercase, number and special character"
+              required
             />
-          </div>
 
-          <Input
-            name="userName"
-            placeholder="User Name"
-            value={formData.userName}
-            onChange={handleChange}
-          />
-          <Input
-            name="phoneNumber"
-            type="tel"
-            placeholder="Phone Number"
-            value={formData.phoneNumber}
-            onChange={handleChange}
-          />
-          <Input
-            name="email"
-            type="email"
-            placeholder="Email"
-            value={formData.email}
-            onChange={handleChange}
-          />
-          <Input
-            name="password"
-            type="password"
-            placeholder="Password"
-            value={formData.password}
-            onChange={handleChange}
-          />
-          <Input
-            name="confirmPassword"
-            type="password"
-            placeholder="Confirm Password"
-            value={formData.confirmPassword}
-            onChange={handleChange}
-          />
+            <Input
+              label="Confirm Password"
+              name="confirmPassword"
+              type="password"
+              placeholder="Repeat your password"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              required
+            />
 
-          <div className="pt-4">
-            <Button type="submit" isLoading={isLoading} fullWidth>
-              Create Account
-            </Button>
-          </div>
-        </form>
+            <div className="pt-2">
+              <Button type="submit" isLoading={isLoading} fullWidth size="lg">
+                Create Account
+              </Button>
+            </div>
+          </form>
 
-        <div className="mt-6 text-center text-xs text-gray-600 font-medium">
-          Already have account?{" "}
-          <Link to="/login" className="text-[#5b7cfa] hover:underline">
-            Login
-          </Link>
+          <p className="mt-5 text-center text-sm text-slate-500">
+            Already have an account?{" "}
+            <Link to="/login" className="text-indigo-600 font-semibold hover:text-indigo-700 transition-colors">
+              Sign in
+            </Link>
+          </p>
         </div>
       </div>
     </div>

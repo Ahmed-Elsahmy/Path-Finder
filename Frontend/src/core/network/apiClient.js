@@ -1,11 +1,11 @@
 import axios from "axios";
 
-const defaultApiBaseUrl = import.meta.env.DEV
-  ? "https://localhost:44330/api"
-  : "https://pathfinder.tryasp.net/api";
+// Always use the production API
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "https://pathfinder.tryasp.net/api";
 
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || defaultApiBaseUrl,
+  baseURL: API_BASE_URL,
   timeout: 30000,
   headers: {
     "Content-Type": "application/json",
@@ -13,7 +13,7 @@ export const apiClient = axios.create({
   },
 });
 
-// حقن التوكن في كل الطلبات لضمان الوصول للمسارات المحمية
+// Inject auth token into every request
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
@@ -23,4 +23,19 @@ apiClient.interceptors.request.use(
     return config;
   },
   (error) => Promise.reject(error),
+);
+
+// Global response error handler
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      const hasToken = localStorage.getItem("token");
+      if (hasToken) {
+        localStorage.clear();
+        window.location.href = "/login";
+      }
+    }
+    return Promise.reject(error);
+  },
 );

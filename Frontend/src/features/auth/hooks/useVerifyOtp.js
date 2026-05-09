@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { authService } from "../services/authService"; // استدعاء الخدمة
+import { authService } from "../services/authService";
 
 export const useVerifyOtp = () => {
-  // 💡 تم التعديل لتكون 6 خانات (6 Empty Strings)
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -15,8 +14,9 @@ export const useVerifyOtp = () => {
     const newOtp = [...otp];
     newOtp[index] = element.value;
     setOtp(newOtp);
+    if (error) setError(null);
 
-    // الانتقال التلقائي للخانة التالية
+    // Auto-focus next input
     if (element.nextSibling && element.value !== "") {
       element.nextSibling.focus();
     }
@@ -26,45 +26,55 @@ export const useVerifyOtp = () => {
     e.preventDefault();
     const code = otp.join("");
 
-    // 💡 التحقق من إدخال 6 أرقام
     if (code.length < 6) {
-      setError("يرجى إدخال كود التحقق كاملاً (6 أرقام)");
+      setError("Please enter the full 6-digit verification code.");
       return;
     }
 
     setIsLoading(true);
     setError(null);
 
-    // سحب الداتا من الذاكرة لمعرفة نحن في أي مسار
     const pendingEmail = sessionStorage.getItem("pending_email");
     const isResetFlow = sessionStorage.getItem("is_password_reset") === "true";
 
     try {
       if (isResetFlow) {
-        // --- مسار نسيان كلمة المرور ---
+        // Password reset flow — store OTP and navigate to new password screen
         sessionStorage.setItem("reset_token", code);
         navigate("/set-new-password");
       } else {
-        // --- مسار تأكيد الحساب الجديد (التسجيل) ---
+        // Account confirmation flow (after registration)
         if (!pendingEmail) {
           setError(
-            "لم نتمكن من العثور على بريدك الإلكتروني، يرجى التسجيل مجدداً.",
+            "We couldn't find your email. Please go back and register again.",
           );
           setIsLoading(false);
           return;
         }
 
-        // إرسال طلب تأكيد الإيميل للباك إند
+        // Send email confirmation request to backend
         await authService.confirmEmail({ email: pendingEmail, otp: code });
 
-        // تنظيف الذاكرة بعد النجاح
+        // Clean up session storage after success
         sessionStorage.removeItem("pending_email");
+        sessionStorage.removeItem("is_password_reset");
 
-        // توجيه المستخدم لصفحة تسجيل الدخول بنجاح!
+        // Redirect to login
         navigate("/login");
       }
     } catch (err) {
-      setError("كود التحقق غير صحيح أو منتهي الصلاحية.");
+      const responseData = err.response?.data;
+      let message = "The verification code is incorrect or has expired.";
+
+      if (typeof responseData === "string" && responseData.length > 0) {
+        message = responseData;
+      } else if (responseData?.message) {
+        message = responseData.message;
+      } else if (responseData?.Message) {
+        message = responseData.Message;
+      }
+
+      setError(message);
     } finally {
       setIsLoading(false);
     }

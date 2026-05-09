@@ -1,57 +1,61 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { useForgotPassword } from "../../hooks/useForgotPassword";
 import Button from "../../../../core/ui_components/Button";
 import Input from "../../../../core/ui_components/Input";
 
 const RecoverPasswordScreen = () => {
-  const { email, setEmail, isLoading, error, handleSendOTP } =
-    useForgotPassword();
+  const { email, setEmail, isLoading, error, handleForgot } = useForgotPassword();
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-gray-50">
-      <div className="w-full max-w-md bg-white rounded-2xl p-8 shadow-sm text-center">
-        {/* أيقونة القفل أو المفتاح (مبسطة) */}
-        <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6">
-          <svg
-            className="w-8 h-8 text-[#5b7cfa]"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
-            />
-          </svg>
-        </div>
-
-        <h1 className="text-2xl font-bold mb-2">Recover Password</h1>
-        <p className="text-sm text-gray-500 mb-8">
-          Don't worry! Enter the email associated
-          <br />
-          with your account to receive an OTP code.
-        </p>
-
-        {error && (
-          <div className="mb-4 text-sm text-red-500 bg-red-50 p-2 rounded-lg">
-            {error}
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+      <div className="w-full max-w-md animate-fade-up">
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8">
+          {/* Icon */}
+          <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <svg className="w-7 h-7 text-indigo-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/>
+            </svg>
           </div>
-        )}
 
-        <form onSubmit={handleSendOTP} className="space-y-6">
-          <Input
-            name="email"
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <Button type="submit" isLoading={isLoading} fullWidth>
-            Send OTP
-          </Button>
-        </form>
+          <h1 className="text-2xl font-black text-slate-900 text-center mb-2">Forgot your password?</h1>
+          <p className="text-slate-500 text-sm text-center mb-8 leading-relaxed">
+            No worries! Enter your email and we'll send you a verification code to reset your password.
+          </p>
+
+          {error && (
+            <div className="mb-5 flex items-start gap-3 p-4 bg-red-50 border border-red-100 rounded-2xl">
+              <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+              </svg>
+              <p className="text-sm text-red-600 font-medium">{error}</p>
+            </div>
+          )}
+
+          <form onSubmit={handleForgot} className="space-y-4">
+            <Input
+              label="Email Address"
+              name="email"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+            <Button type="submit" isLoading={isLoading} fullWidth size="lg">
+              Send Verification Code
+            </Button>
+          </form>
+
+          <div className="mt-6 text-center">
+            <Link to="/login" className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 transition-colors font-medium">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/>
+              </svg>
+              Back to Sign In
+            </Link>
+          </div>
+        </div>
       </div>
     </div>
   );

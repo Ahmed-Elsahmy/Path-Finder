@@ -117,9 +117,6 @@ namespace BLL.Services.CourseProgressService
             }
         }
 
-        // ====================================================
-        // 3. التحديث التراكمي (Incremental Update) والمكافآت
-        // ====================================================
         public async Task<ServiceResult<string>> UpdateProgressAsync(string userId, int progressId, UpdateProgressRQ request)
         {
             try
@@ -133,27 +130,33 @@ namespace BLL.Services.CourseProgressService
 
                 int totalLessons = progress.Course.TotalLessons > 0 ? progress.Course.TotalLessons : 1;
 
-                // 🟢 1. السيناريو التراكمي (نجمع الدروس المنجزة حالياً مع الرصيد القديم)
-                if (request.NewlyCompletedLessons > 0)
+                // =========================================================
+                // 🟢 التعديل الجديد: التحديث المباشر (Absolute / Idempotent)
+                // =========================================================
+                progress.CompletedLessons = request.CompletedLessons;
+
+                // 1. حماية: التأكد أن المجموع لا يتخطى إجمالي دروس الكورس
+                if (progress.CompletedLessons > totalLessons)
                 {
-                    progress.CompletedLessons += request.NewlyCompletedLessons;
+                    progress.CompletedLessons = totalLessons;
+                }
+                else if (progress.CompletedLessons < 0)
+                {
+                    progress.CompletedLessons = 0; // حماية من الأرقام السلبية
                 }
 
-                // حماية: التأكد أن المجموع لا يتخطى إجمالي دروس الكورس
-                if (progress.CompletedLessons > totalLessons)
-                    progress.CompletedLessons = totalLessons;
-
+                // 2. تحديث الملاحظات إن وجدت
                 if (request.Notes != null)
                     progress.Notes = request.Notes;
 
-                // 🟢 2. حساب النسبة المئوية أوتوماتيكياً
+                // 3. حساب النسبة المئوية أوتوماتيكياً
                 double percentage = ((double)progress.CompletedLessons / totalLessons) * 100;
                 progress.ProgressPercentage = (int)Math.Round(percentage);
 
                 // متغير لكي نُعطي المهارات للمستخدم مرة واحدة فقط عند التخرج
                 bool justCompletedNow = false;
 
-                // 🟢 3. تغيير الحالة والتاريخ بناءً على الإنجاز
+                // 4. تغيير الحالة والتاريخ بناءً على الإنجاز
                 if (progress.CompletedLessons == 0)
                 {
                     progress.Status = "Not Started";
@@ -167,20 +170,21 @@ namespace BLL.Services.CourseProgressService
                 else if (progress.CompletedLessons == totalLessons)
                 {
                     if (progress.Status != "Completed")
-                        justCompletedNow = true; // اكتشفنا أنه أنهى الكورس للتو في هذه اللحظة!
+                        justCompletedNow = true; // اكشفنا أنه أنهى الكورس للتو في هذه اللحظة!
 
                     progress.Status = "Completed";
                     if (!progress.CompletedAt.HasValue)
                         progress.CompletedAt = DateTime.UtcNow;
                 }
 
-                // حفظ التقدم
+                // 5. حفظ التقدم للكورس نفسه
                 _progressRepo.Update(progress);
                 await _progressRepo.SaveChangesAsync();
-                // 🧠 Update career path progress
+
+                // 6. 🧠 تحديث تقدم الـ Career Path المرتبط بهذا الكورس
                 await UpdateUserCareerPathProgressAsync(userId, progress.CourseId);
 
-                // 🟢 4. السحر: نقل المهارات للمستخدم إذا اكتمل الكورس الآن
+                // 7. السحر: نقل المهارات للمستخدم وإرسال الإشعارات إذا اكتمل الكورس الآن
                 if (justCompletedNow)
                 {
                     await AssignCourseSkillsToUserAsync(userId, progress.CourseId, progress.Course.Name);

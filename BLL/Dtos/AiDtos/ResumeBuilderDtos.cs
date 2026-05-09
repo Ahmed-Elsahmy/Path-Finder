@@ -10,7 +10,7 @@ namespace BLL.Dtos.AiDtos
 
         /// <summary>Resume style: "Professional", "Modern", "ATS-Friendly", "Creative"</summary>
         [StringLength(50)]
-        public string Style { get; set; } = "Professional";
+        public string Style { get; set; } = "Professional And ATS-Friendly And Creative ";
 
         /// <summary>Language for the resume: "English" or "Arabic"</summary>
         [StringLength(20)]
@@ -18,7 +18,7 @@ namespace BLL.Dtos.AiDtos
 
         /// <summary>Additional notes or focus areas for the resume</summary>
         [StringLength(500)]
-        public string? AdditionalNotes { get; set; }
+        public string? AdditionalNotes { get; set; } = "";
     }
 
     public class ResumeBuilderRS

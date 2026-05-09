@@ -20,6 +20,7 @@ export const useSignUp = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    if (error) setError(null);
   };
 
   const handleSignUp = async (e) => {
@@ -28,7 +29,13 @@ export const useSignUp = () => {
     setError(null);
 
     if (formData.password !== formData.confirmPassword) {
-      setError("كلمات المرور غير متطابقة.");
+      setError("Passwords do not match.");
+      setIsLoading(false);
+      return;
+    }
+
+    if (formData.password.length < 8) {
+      setError("Password must be at least 8 characters long.");
       setIsLoading(false);
       return;
     }
@@ -36,51 +43,55 @@ export const useSignUp = () => {
     try {
       await authService.register(formData);
 
-      // 💡 حفظ الإيميل في الذاكرة لنستخدمه في شاشة الـ OTP
+      // Store email in session for OTP verification screen
       sessionStorage.setItem("pending_email", formData.email);
-      // 💡 التأكيد على أن هذه عملية "تأكيد حساب" وليست "نسيان باسورد"
+      // Mark this as an account confirmation flow (not password reset)
       sessionStorage.setItem("is_password_reset", "false");
 
       navigate("/verify-otp");
     } catch (err) {
       let backendError =
         err.response?.data?.message ||
+        err.response?.data?.Message ||
         err.response?.data ||
-        "حدث خطأ غير متوقع.";
+        "An unexpected error occurred.";
 
-      // التعامل مع مصفوفة الأخطاء لو رجعت من الـ Identity
+      // Handle Identity error array from ASP.NET
       if (Array.isArray(err.response?.data)) {
         backendError = err.response.data[0]?.description || backendError;
       }
 
-      // تحويل الأخطاء المعقدة (غير أبجدي رقمي) لرسائل مفهومة للمستخدم
+      // Translate common backend errors to user-friendly English
       if (typeof backendError === "string") {
+        const lower = backendError.toLowerCase();
         if (
-          backendError.includes("غير ابجدي رقمي") ||
-          backendError.includes("NonAlphanumeric")
+          lower.includes("nonalphanumeric") ||
+          lower.includes("غير ابجدي")
         ) {
           setError(
-            "كلمة المرور ضعيفة: يجب أن تحتوي على رمز خاص واحد على الأقل (مثل @, #, $, %).",
+            "Password too weak: must contain at least one special character (e.g. @, #, $, %).",
+          );
+        } else if (lower.includes("upper") || lower.includes("كبير")) {
+          setError(
+            "Password too weak: must contain at least one uppercase letter (A-Z).",
+          );
+        } else if (lower.includes("digit") || lower.includes("رقم")) {
+          setError(
+            "Password too weak: must contain at least one digit (0-9).",
           );
         } else if (
-          backendError.includes("Upper") ||
-          backendError.includes("كبير")
+          lower.includes("duplicate") ||
+          lower.includes("already") ||
+          lower.includes("taken")
         ) {
           setError(
-            "كلمة المرور ضعيفة: يجب أن تحتوي على حرف إنجليزي كبير (A-Z).",
-          );
-        } else if (
-          backendError.includes("Digit") ||
-          backendError.includes("رقم")
-        ) {
-          setError(
-            "كلمة المرور ضعيفة: يجب أن تحتوي على رقم واحد على الأقل (0-9).",
+            "This email or username is already registered. Try signing in instead.",
           );
         } else {
-          setError(backendError); // عرض الخطأ كما هو إذا كان مختلفاً
+          setError(backendError);
         }
       } else {
-        setError("فشل التسجيل، تأكد من صحة البيانات.");
+        setError("Registration failed. Please verify your information.");
       }
     } finally {
       setIsLoading(false);
