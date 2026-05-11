@@ -96,24 +96,13 @@ namespace Path_Finder.Controllers
             return HandleResult(result);
         }
 
-        [HttpGet("is-enrolled/{careerPathId:int}")]
-        public async Task<IActionResult> IsEnrolled(int careerPathId)
-        {
-            var userId = GetUserId();
-            if (userId is null) return Unauthorized();
-
-            var result = await _userCareerPathService.IsUserEnrolledAsync(userId, careerPathId);
-            if (result.IsSuccess) return Ok(result.Data);
-            return HandleResult(result);
-        }
-
         [HttpGet("recommended")]
         public async Task<IActionResult> GetRecommended()
         {
             var userId = GetUserId();
             if (userId is null) return Unauthorized();
 
-            var result = await _userCareerPathService.GetRecommendedCareerPathsAsync(userId);
+            var result = await _userCareerPathService.GetRecommendationsAsync(userId);
             if (result.IsSuccess) return Ok(result.Data);
             return HandleResult(result);
         }
