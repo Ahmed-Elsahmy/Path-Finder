@@ -358,88 +358,73 @@ namespace BLL.Services.UserCarrerPathServices
         public async Task<ServiceResult<List<RecommendedCareerPathDto>>> GetRecommendedCareerPathsAsync(string userId)
         {
             if (string.IsNullOrWhiteSpace(userId))
+            {
                 return ServiceResult<List<RecommendedCareerPathDto>>
                     .Failure("Invalid user ID.", ServiceErrorCode.ValidationError);
+            }
 
             try
             {
                 var apiKey = _config["Gemini:ApiKey"];
+
                 if (string.IsNullOrWhiteSpace(apiKey))
+                {
                     return ServiceResult<List<RecommendedCareerPathDto>>
                         .Failure("AI service not configured.");
+                }
 
-                // 🔥 1. Get User Data
+                // 🔥 USER DATA
                 var skills = await _userSkillRepository.Query()
                     .Where(x => x.UserId == userId)
                     .Select(x => x.Skill.SkillName)
-                    .Take(15)
+                    .Take(10)
                     .ToListAsync();
 
                 var education = await _educationRepository.Query()
                     .Where(x => x.UserId == userId)
                     .Select(x => $"{x.Degree} in {x.FieldOfStudy}")
-                    .Take(5)
+                    .Take(3)
                     .ToListAsync();
 
                 var experience = await _experienceRepository.Query()
                     .Where(x => x.UserId == userId)
                     .Select(x => $"{x.Position} at {x.CompanyName}")
+                    .Take(3)
+                    .ToListAsync();
+
+                // 🔥 LIMIT CAREER PATHS
+                var careerPaths = await _careerPathRepository.Query()
                     .Take(5)
                     .ToListAsync();
 
-                // 🔥 2. LIMIT Career Paths
-                var careerPaths = await _careerPathRepository.Query()
-                    .Take(10)
-                    .ToListAsync();
-
                 if (!careerPaths.Any())
+                {
                     return ServiceResult<List<RecommendedCareerPathDto>>
                         .Success(new List<RecommendedCareerPathDto>());
+                }
 
-                // 🔥 3. Strong Prompt (IMPORTANT FIX)
+                // 🔥 SHORT PROMPT
                 var prompt = $@"
-You are an AI career advisor.
+Recommend the best matching career paths for this user.
 
-Return ONLY valid JSON array.
+USER SKILLS:
+{string.Join(", ", skills)}
 
-Rules:
-- Max 5 results
-- Score from 0 to 100
-- No markdown
-- No explanation
-- ALL strings must be single line
-- NO line breaks inside values
-- All quotes must be properly closed
-- MUST be valid JSON
+EDUCATION:
+{string.Join(", ", education)}
 
-Format:
-[
-  {{
-    ""careerPathId"": number,
-    ""score"": number,
-    ""reason"": string,
-    ""missingSkills"": string[]
-  }}
-]
-
-USER:
-Skills: {string.Join(", ", skills)}
-Education: {string.Join(", ", education)}
-Experience: {string.Join(", ", experience)}
+EXPERIENCE:
+{string.Join(", ", experience)}
 
 CAREER PATHS:
 {string.Join("\n", careerPaths.Select(cp =>
-            $@"ID: {cp.CareerPathId}
+        $@"ID: {cp.CareerPathId}
 Name: {cp.PathName}
-Description: {cp.Description}
-Difficulty: {cp.DifficultyLevel}
-Prerequisites: {cp.Prerequisites}
-"))}
+Difficulty: {cp.DifficultyLevel}"
+        ))}
 ";
 
-                if (prompt.Length > 8000)
-                    prompt = prompt.Substring(0, 8000);
-
+                // 🔥 GEMINI BODY
                 var body = new
                 {
                     contents = new[]
@@ -448,53 +433,125 @@ Prerequisites: {cp.Prerequisites}
                 {
                     parts = new[]
                     {
-                        new { text = prompt }
+                        new
+                        {
+                            text = prompt
+                        }
                     }
                 }
             },
+
                     generationConfig = new
                     {
-                        temperature = 0.3,
-                        topP = 0.9,
+                        temperature = 0.2,
+                        topP = 0.8,
                         maxOutputTokens = 2048,
-                        response_mime_type = "application/json" // 🔥 VERY IMPORTANT
+
+                        responseMimeType = "application/json",
+
+                        responseSchema = new
+                        {
+                            type = "ARRAY",
+
+                            items = new
+                            {
+                                type = "OBJECT",
+
+                                properties = new
+                                {
+                                    careerPathId = new
+                                    {
+                                        type = "INTEGER"
+                                    },
+
+                                    score = new
+                                    {
+                                        type = "INTEGER"
+                                    },
+
+                                    reason = new
+                                    {
+                                        type = "STRING"
+                                    },
+
+                                    missingSkills = new
+                                    {
+                                        type = "ARRAY",
+
+                                        items = new
+                                        {
+                                            type = "STRING"
+                                        }
+                                    }
+                                },
+
+                                required = new[]
+                                {
+                            "careerPathId",
+                            "score",
+                            "reason",
+                            "missingSkills"
+                        }
+                            }
+                        }
                     }
                 };
 
                 var client = _httpClientFactory.CreateClient("GeminiClient");
+
                 client.DefaultRequestHeaders.Clear();
-                client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
+
+                client.DefaultRequestHeaders.TryAddWithoutValidation(
+                    "x-goog-api-key",
+                    apiKey);
 
                 HttpResponseMessage response = null!;
 
-                // 🔁 Retry
+                // 🔥 RETRY LOGIC
                 for (int i = 0; i < 3; i++)
                 {
                     response = await client.PostAsync(
                         GeminiBaseUrl,
-                        new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"));
+                        new StringContent(
+                            JsonSerializer.Serialize(body),
+                            Encoding.UTF8,
+                            "application/json"));
 
                     if (response.IsSuccessStatusCode)
                         break;
 
                     if ((int)response.StatusCode == 503)
                     {
-                        _logger.LogWarning("Gemini 503 retry {Attempt}", i + 1);
+                        _logger.LogWarning(
+                            "Gemini retry attempt {Attempt}",
+                            i + 1);
+
                         await Task.Delay(2000);
                     }
-                    else break;
+                    else
+                    {
+                        break;
+                    }
                 }
 
                 var json = await response.Content.ReadAsStringAsync();
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogError("Gemini Error: {Status} | {Body}", response.StatusCode, json);
+                    _logger.LogError(
+                        "Gemini Error: {Status} | {Body}",
+                        response.StatusCode,
+                        json);
+
                     return ServiceResult<List<RecommendedCareerPathDto>>
                         .Failure("AI request failed.");
                 }
 
-                // 🔥 Extract AI Text
+                _logger.LogInformation(
+                    "Gemini Raw Response: {Response}",
+                    json);
+
+                // 🔥 EXTRACT AI TEXT
                 using var doc = JsonDocument.Parse(json);
 
                 var aiText = doc.RootElement
@@ -505,42 +562,55 @@ Prerequisites: {cp.Prerequisites}
                     .GetString();
 
                 if (string.IsNullOrWhiteSpace(aiText))
+                {
                     return ServiceResult<List<RecommendedCareerPathDto>>
-                        .Failure("Empty AI response");
+                        .Failure("Empty AI response.");
+                }
 
-                // 🔥 CLEAN JSON (CRITICAL FIX)
-                aiText = CleanJson(aiText);
+                // 🔥 CLEAN JSON
+                aiText = ExtractJson(aiText);
 
-                _logger.LogInformation("AI RAW CLEANED: {Json}", aiText);
+                _logger.LogInformation(
+                    "AI CLEAN JSON: {Json}",
+                    aiText);
 
                 // 🔥 SAFE DESERIALIZATION
                 List<AiCareerPathRecommendation> aiResults;
 
                 try
                 {
-                    aiResults = JsonSerializer.Deserialize<List<AiCareerPathRecommendation>>(aiText,
+                    aiResults = JsonSerializer.Deserialize<List<AiCareerPathRecommendation>>(
+                        aiText,
                         new JsonSerializerOptions
                         {
-                            PropertyNameCaseInsensitive = true
-                        }) ?? new List<AiCareerPathRecommendation>();
+                            PropertyNameCaseInsensitive = true,
+                            AllowTrailingCommas = true
+                        })
+                        ?? new List<AiCareerPathRecommendation>();
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "AI JSON parsing failed: {Json}", aiText);
+                    _logger.LogError(
+                        ex,
+                        "AI JSON Parsing Failed: {Json}",
+                        aiText);
 
                     return ServiceResult<List<RecommendedCareerPathDto>>
-                        .Failure("AI returned invalid JSON.");
+                        .Failure($"AI returned invalid JSON: {ex.Message}");
                 }
 
+                // 🔥 FILTER & MAP RESULTS
                 var validResults = aiResults
-                    .Where(r => careerPaths.Any(cp => cp.CareerPathId == r.CareerPathId))
-                    .GroupBy(r => r.CareerPathId) // remove duplicates
+                    .Where(r => careerPaths.Any(cp =>
+                        cp.CareerPathId == r.CareerPathId))
+                    .GroupBy(r => r.CareerPathId)
                     .Select(g => g.First())
                     .OrderByDescending(r => r.Score)
                     .Take(5)
                     .Select(r =>
                     {
-                        var cp = careerPaths.FirstOrDefault(x => x.CareerPathId == r.CareerPathId);
+                        var cp = careerPaths.FirstOrDefault(x =>
+                            x.CareerPathId == r.CareerPathId);
 
                         return new RecommendedCareerPathDto
                         {
@@ -553,33 +623,51 @@ Prerequisites: {cp.Prerequisites}
                     })
                     .ToList();
 
-                return ServiceResult<List<RecommendedCareerPathDto>>.Success(validResults);
+                return ServiceResult<List<RecommendedCareerPathDto>>
+                    .Success(validResults);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error generating AI recommendations for user {UserId}", userId);
+                _logger.LogError(
+                    ex,
+                    "Error generating AI recommendations for user {UserId}",
+                    userId);
 
                 return ServiceResult<List<RecommendedCareerPathDto>>
                     .Failure("Error generating recommendations.");
             }
         }
-        private string CleanJson(string json)
+
+        private string ExtractJson(string text)
         {
-            if (string.IsNullOrWhiteSpace(json))
+            if (string.IsNullOrWhiteSpace(text))
                 return "[]";
 
-            return json
+            text = text
                 .Replace("```json", "")
                 .Replace("```", "")
-                .Replace("\r", "")
-                .Replace("\n", " ") 
                 .Trim();
+
+            int start = text.IndexOf('[');
+
+            int end = text.LastIndexOf(']');
+
+            if (start >= 0 && end > start)
+            {
+                text = text.Substring(start, end - start + 1);
+            }
+
+            return text.Trim();
         }
+
         private class AiCareerPathRecommendation
         {
             public int CareerPathId { get; set; }
+
             public int Score { get; set; }
+
             public string? Reason { get; set; }
+
             public List<string>? MissingSkills { get; set; }
         }
     }
