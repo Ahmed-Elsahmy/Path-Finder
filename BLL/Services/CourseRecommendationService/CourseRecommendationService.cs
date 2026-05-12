@@ -20,7 +20,7 @@ namespace BLL.Services.CourseRecommendationService
         private readonly IConfiguration _config;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<CourseRecommendationService> _logger;
-
+        private static int _currentGeminiKeyIndex = 0;
         private const string GeminiBaseUrl =
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
@@ -182,62 +182,133 @@ Do not recommend courses that teach skills the user already has at Advanced leve
             }
         }
 
-        private async Task<CourseRecommendationListRS?> CallGeminiAsync(object requestBody, CancellationToken ct)
+        private async Task<CourseRecommendationListRS?> CallGeminiAsync(
+            object requestBody,
+            CancellationToken ct)
         {
             try
             {
-                var apiKey = _config["Gemini:ApiKey"];
-                if (string.IsNullOrWhiteSpace(apiKey)) return null;
+                var apiKeys = GetGeminiApiKeys();
 
-                var client = _httpClientFactory.CreateClient("GeminiClient");
-                client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
-
-                var httpContent = new StringContent(
-                    JsonSerializer.Serialize(requestBody),
-                    Encoding.UTF8,
-                    "application/json");
-
-                HttpResponseMessage response = null!;
-                for (int attempt = 1; attempt <= 3; attempt++)
+                if (!apiKeys.Any())
                 {
-                    response = await client.PostAsync(GeminiBaseUrl, httpContent, ct);
-                    if (response.IsSuccessStatusCode) break;
+                    _logger.LogWarning(
+                        "No Gemini API keys configured.");
 
-                    if ((int)response.StatusCode == 503 && attempt < 3)
-                    {
-                        _logger.LogWarning("Gemini 503 on recommendation attempt {Attempt}, retrying...", attempt);
-                        await Task.Delay(3000, ct);
-                    }
-                    else break;
-                }
-
-                var raw = await response.Content.ReadAsStringAsync(ct);
-                if (!response.IsSuccessStatusCode)
-                {
-                    _logger.LogError("Gemini error {Status}: {Body}", response.StatusCode, raw);
                     return null;
                 }
 
-                using var doc = JsonDocument.Parse(raw);
-                var aiText = doc.RootElement
-                    .GetProperty("candidates")[0]
-                    .GetProperty("content")
-                    .GetProperty("parts")[0]
-                    .GetProperty("text")
-                    .GetString();
+                var client =
+                    _httpClientFactory.CreateClient("GeminiClient");
 
-                aiText = aiText?.Replace("```json", "").Replace("```", "").Trim();
+                int totalKeys = apiKeys.Count;
 
-                if (string.IsNullOrWhiteSpace(aiText)) return null;
+                for (int i = 0; i < totalKeys; i++)
+                {
+                    var index =
+                        Interlocked.Increment(ref _currentGeminiKeyIndex);
 
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                return JsonSerializer.Deserialize<CourseRecommendationListRS>(aiText, options);
+                    var apiKey = apiKeys[index % totalKeys];
+
+                    try
+                    {
+                        client.DefaultRequestHeaders.Remove("x-goog-api-key");
+
+                        client.DefaultRequestHeaders.TryAddWithoutValidation(
+                            "x-goog-api-key",
+                            apiKey);
+
+                        var httpContent = new StringContent(
+                            JsonSerializer.Serialize(requestBody),
+                            Encoding.UTF8,
+                            "application/json");
+
+                        var response = await client.PostAsync(
+                            GeminiBaseUrl,
+                            httpContent,
+                            ct);
+
+                        var raw =
+                            await response.Content.ReadAsStringAsync(ct);
+
+                        // SUCCESS
+                        if (response.IsSuccessStatusCode)
+                        {
+                            using var doc = JsonDocument.Parse(raw);
+
+                            var aiText = doc.RootElement
+                                .GetProperty("candidates")[0]
+                                .GetProperty("content")
+                                .GetProperty("parts")[0]
+                                .GetProperty("text")
+                                .GetString();
+
+                            aiText = aiText?
+                                .Replace("```json", "")
+                                .Replace("```", "")
+                                .Trim();
+
+                            if (string.IsNullOrWhiteSpace(aiText))
+                                continue;
+
+                            var options = new JsonSerializerOptions
+                            {
+                                PropertyNameCaseInsensitive = true
+                            };
+
+                            return JsonSerializer.Deserialize<CourseRecommendationListRS>(
+                                aiText,
+                                options);
+                        }
+
+                        // RETRYABLE ERRORS
+                        if ((int)response.StatusCode == 429 ||
+                            (int)response.StatusCode == 503)
+                        {
+                            _logger.LogWarning(
+                                "Gemini key failed with {Status}. Trying next key...",
+                                response.StatusCode);
+
+                            continue;
+                        }
+
+                        // OTHER ERRORS
+                        _logger.LogError(
+                            "Gemini error {Status}: {Body}",
+                            response.StatusCode,
+                            raw);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        _logger.LogWarning(
+                            "Gemini request timed out. Trying next key...");
+
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(
+                            ex,
+                            "Gemini key failed. Trying next key...");
+                    }
+                }
+
+                return null;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Gemini API call failed for course recommendations");
+                _logger.LogError(
+                    ex,
+                    "Gemini API call failed for course recommendations");
+
                 return null;
             }
+        }
+        private List<string> GetGeminiApiKeys()
+        {
+            return _config
+                .GetSection("Gemini:ApiKeys")
+                .Get<List<string>>() ?? new List<string>();
         }
     }
 }

@@ -27,7 +27,7 @@ namespace BLL.Services.JobServices
         private readonly IMapper _mapper;
         private readonly ILogger<JobService> _logger;
         private readonly IRecentSearchService _recentSearchService;
-
+        private static int _currentGeminiKeyIndex = 0;
         public JobService(
             IRepository<Job> jobRepository,
             IRepository<JobSkillRequirement> skillReqRepository,
@@ -375,90 +375,241 @@ namespace BLL.Services.JobServices
                 return ServiceResult<List<JobRS>>.Failure("Error getting job recommendations.");
             }
         }
-        private async Task ExtractAndLinkSkillsAsync(int jobId, string title, string? description)
+        private async Task ExtractAndLinkSkillsAsync(
+            int jobId,
+            string title,
+            string? description)
         {
-            var apiKey = _config["Gemini:ApiKey"];
-            if (string.IsNullOrWhiteSpace(apiKey)) return;
-
-            var prompt = $@"
-Extract the technical and soft skills required for this job. Return ONLY a JSON array of short, canonical skill names.
-Use standard names (e.g., ""C#"" not ""C Sharp"", ""React"" not ""ReactJS Development"").
-
-Job Title: {title}
-Description: {description ?? "N/A"}";
-
-            var requestBody = new
+            try
             {
-                contents = new[] { new { parts = new[] { new { text = prompt } } } },
-                generationConfig = new
+                var apiKeys = GetGeminiApiKeys();
+
+                if (!apiKeys.Any())
                 {
-                    temperature = 0.2,
-                    responseMimeType = "application/json"
-                }
-            };
+                    _logger.LogWarning(
+                        "No Gemini API keys configured.");
 
-            var client = _httpClientFactory.CreateClient("GeminiClient");
-            client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
-
-            var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-            var url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
-            var response = await client.PostAsync(url, content);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("Gemini skill extraction returned {Status}", response.StatusCode);
-                return;
-            }
-
-            var responseString = await response.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(responseString);
-            var aiText = doc.RootElement
-                .GetProperty("candidates")[0]
-                .GetProperty("content")
-                .GetProperty("parts")[0]
-                .GetProperty("text").GetString();
-
-            if (string.IsNullOrWhiteSpace(aiText)) return;
-
-            aiText = aiText.Replace("```json", "").Replace("```", "").Trim();
-            var skills = JsonSerializer.Deserialize<List<string>>(aiText);
-            if (skills == null || !skills.Any()) return;
-
-            var allGlobalSkills = await _skillRepository.GetAllAsync();
-
-            foreach (var skillName in skills.Where(s => !string.IsNullOrWhiteSpace(s)))
-            {
-                var skillLower = skillName.ToLower().Trim();
-
-                var globalSkill = allGlobalSkills.FirstOrDefault(s =>
-                {
-                    var gl = s.SkillName.ToLower().Trim();
-                    return gl == skillLower || gl.Contains(skillLower) || skillLower.Contains(gl);
-                });
-
-                if (globalSkill == null)
-                {
-                    globalSkill = new Skill { SkillName = skillName, Category = "Job Requirement", IsTechnical = true };
-                    await _skillRepository.AddAsync(globalSkill);
-                    await _skillRepository.SaveChangesAsync();
-                    allGlobalSkills.Add(globalSkill);
+                    return;
                 }
 
-                var exists = await _skillReqRepository.AnyAsync(
-                    sr => sr.JobId == jobId && sr.SkillId == globalSkill.SkillId);
-                if (!exists)
+                var prompt = $@"
+Extract the technical and soft skills required
+for this job.
+
+Return ONLY a JSON array of short,
+canonical skill names.
+
+Use standard names:
+- ""C#"" not ""C Sharp""
+- ""React"" not ""ReactJS Development""
+
+Job Title:
+{title}
+
+Description:
+{description ?? "N/A"}
+";
+
+                var requestBody = new
                 {
-                    await _skillReqRepository.AddAsync(new JobSkillRequirement
+                    contents = new[]
                     {
-                        JobId = jobId,
-                        SkillId = globalSkill.SkillId,
-                        IsMandatory = true
-                    });
+                new
+                {
+                    parts = new[]
+                    {
+                        new { text = prompt }
+                    }
                 }
-            }
+            },
 
-            await _skillReqRepository.SaveChangesAsync();
-            _logger.LogInformation("Extracted {Count} skills for job {JobId}", skills.Count, jobId);
+                    generationConfig = new
+                    {
+                        temperature = 0.2,
+                        responseMimeType = "application/json"
+                    }
+                };
+
+                var client =
+                    _httpClientFactory.CreateClient("GeminiClient");
+
+                int totalKeys = apiKeys.Count;
+
+                List<string>? skills = null;
+
+                for (int i = 0; i < totalKeys; i++)
+                {
+                    var index =
+                        Interlocked.Increment(ref _currentGeminiKeyIndex);
+
+                    var apiKey = apiKeys[index % totalKeys];
+
+                    try
+                    {
+                        client.DefaultRequestHeaders.Remove("x-goog-api-key");
+
+                        client.DefaultRequestHeaders.TryAddWithoutValidation(
+                            "x-goog-api-key",
+                            apiKey);
+
+                        using var content = new StringContent(
+                            JsonSerializer.Serialize(requestBody),
+                            Encoding.UTF8,
+                            "application/json");
+
+                        var response = await client.PostAsync(
+                            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+                            content);
+
+                        var responseString =
+                            await response.Content.ReadAsStringAsync();
+
+                        // SUCCESS
+                        if (response.IsSuccessStatusCode)
+                        {
+                            using var doc =
+                                JsonDocument.Parse(responseString);
+
+                            var aiText = doc.RootElement
+                                .GetProperty("candidates")[0]
+                                .GetProperty("content")
+                                .GetProperty("parts")[0]
+                                .GetProperty("text")
+                                .GetString();
+
+                            if (string.IsNullOrWhiteSpace(aiText))
+                                continue;
+
+                            aiText = aiText
+                                .Replace("```json", "")
+                                .Replace("```JSON", "")
+                                .Replace("```", "")
+                                .Trim();
+
+                            skills =
+                                JsonSerializer.Deserialize<List<string>>(
+                                    aiText);
+
+                            if (skills != null && skills.Any())
+                                break;
+
+                            continue;
+                        }
+
+                        // RETRYABLE ERRORS
+                        if ((int)response.StatusCode == 429 ||
+                            (int)response.StatusCode == 503)
+                        {
+                            _logger.LogWarning(
+                                "Gemini key failed with {Status}. Trying next key...",
+                                response.StatusCode);
+
+                            continue;
+                        }
+
+                        // OTHER ERRORS
+                        _logger.LogError(
+                            "Gemini skill extraction failed with status {Status}. Body: {Body}",
+                            response.StatusCode,
+                            responseString);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        _logger.LogWarning(
+                            "Gemini request timed out. Trying next key...");
+
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(
+                            ex,
+                            "Gemini key failed. Trying next key...");
+                    }
+                }
+
+                if (skills == null || !skills.Any())
+                {
+                    _logger.LogWarning(
+                        "No skills extracted for job {JobId}",
+                        jobId);
+
+                    return;
+                }
+
+                var allGlobalSkills =
+                    await _skillRepository.GetAllAsync();
+
+                foreach (var skillName in skills.Where(s =>
+                             !string.IsNullOrWhiteSpace(s)))
+                {
+                    var skillLower =
+                        skillName.ToLower().Trim();
+
+                    var globalSkill =
+                        allGlobalSkills.FirstOrDefault(s =>
+                        {
+                            var gl =
+                                s.SkillName.ToLower().Trim();
+
+                            return gl == skillLower ||
+                                   gl.Contains(skillLower) ||
+                                   skillLower.Contains(gl);
+                        });
+
+                    if (globalSkill == null)
+                    {
+                        globalSkill = new Skill
+                        {
+                            SkillName = skillName,
+                            Category = "Job Requirement",
+                            IsTechnical = true
+                        };
+
+                        await _skillRepository.AddAsync(globalSkill);
+                        await _skillRepository.SaveChangesAsync();
+
+                        allGlobalSkills.Add(globalSkill);
+                    }
+
+                    var exists =
+                        await _skillReqRepository.AnyAsync(
+                            sr =>
+                                sr.JobId == jobId &&
+                                sr.SkillId == globalSkill.SkillId);
+
+                    if (!exists)
+                    {
+                        await _skillReqRepository.AddAsync(
+                            new JobSkillRequirement
+                            {
+                                JobId = jobId,
+                                SkillId = globalSkill.SkillId,
+                                IsMandatory = true
+                            });
+                    }
+                }
+
+                await _skillReqRepository.SaveChangesAsync();
+
+                _logger.LogInformation(
+                    "Extracted {Count} skills for job {JobId}",
+                    skills.Count,
+                    jobId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Job skill extraction failed for JobId {JobId}",
+                    jobId);
+            }
+        }
+        private List<string> GetGeminiApiKeys()
+        {
+            return _config
+                .GetSection("Gemini:ApiKeys")
+                .Get<List<string>>() ?? new List<string>();
         }
     }
 }

@@ -17,7 +17,7 @@ namespace BLL.Services.ChatbotService
         private readonly ILogger<ChatbotService> _logger;
         private readonly IRepository<UserSkill> _userSkillRepository;
         private readonly IRepository<UserEducation> _educationRepository;
-
+        private static int _currentGeminiKeyIndex = 0;
         private const long MaxFileSizeBytes = 10 * 1024 * 1024;
         private const string GeminiBaseUrl =
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
@@ -114,9 +114,6 @@ RESPONSE STYLE
         {
             try
             {
-                var apiKey = _config["Gemini:ApiKey"];
-                if (string.IsNullOrWhiteSpace(apiKey))
-                    return ServiceResult<string>.Failure("Gemini API key is not configured.");
 
                 if (string.IsNullOrWhiteSpace(request.Message) && request.Attachment == null)
                     return ServiceResult<string>.Failure(
@@ -288,17 +285,24 @@ Respond in the same language the job title is written in.
             double temperature,
             CancellationToken cancellationToken)
         {
-            var apiKey = _config["Gemini:ApiKey"];
-            if (string.IsNullOrWhiteSpace(apiKey))
-                return ServiceResult<string>.Failure("Gemini API key is not configured.");
+            var apiKeys = GetGeminiApiKeys();
+
+            if (!apiKeys.Any())
+                return ServiceResult<string>.Failure(
+                    "No Gemini API keys configured.");
 
             var body = new
             {
                 systemInstruction = new
                 {
-                    parts = new[] { new { text = systemPrompt } }
+                    parts = new[]
+                    {
+                new { text = systemPrompt }
+            }
                 },
+
                 contents = contentsList,
+
                 generationConfig = new
                 {
                     temperature,
@@ -309,35 +313,93 @@ Respond in the same language the job title is written in.
                 }
             };
 
-            var client = _httpClientFactory.CreateClient("GeminiClient");
-            client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
+            var client =
+                _httpClientFactory.CreateClient("GeminiClient");
 
-            var httpContent = new StringContent(
-                JsonSerializer.Serialize(body),
-                Encoding.UTF8,
-                "application/json");
+            int totalKeys = apiKeys.Count;
 
-            var response = await client.PostAsync(GeminiBaseUrl, httpContent, cancellationToken);
-            var responseString = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
+            for (int i = 0; i < totalKeys; i++)
             {
-                _logger.LogError("Gemini error {Status}: {Body}", response.StatusCode, responseString);
-                return ServiceResult<string>.Failure(
-                    $"AI service error ({response.StatusCode}). Please try again.",
-                    ServiceErrorCode.UpstreamServiceError);
+                var index =
+                    Interlocked.Increment(ref _currentGeminiKeyIndex);
+
+                var apiKey = apiKeys[index % totalKeys];
+
+                try
+                {
+                    client.DefaultRequestHeaders.Remove("x-goog-api-key");
+
+                    client.DefaultRequestHeaders.TryAddWithoutValidation(
+                        "x-goog-api-key",
+                        apiKey);
+
+                    var httpContent = new StringContent(
+                        JsonSerializer.Serialize(body),
+                        Encoding.UTF8,
+                        "application/json");
+
+                    var response = await client.PostAsync(
+                        GeminiBaseUrl,
+                        httpContent,
+                        cancellationToken);
+
+                    var responseString =
+                        await response.Content.ReadAsStringAsync(
+                            cancellationToken);
+
+                    // SUCCESS
+                    if (response.IsSuccessStatusCode)
+                    {
+                        using var doc =
+                            JsonDocument.Parse(responseString);
+
+                        var aiText = doc.RootElement
+                            .GetProperty("candidates")[0]
+                            .GetProperty("content")
+                            .GetProperty("parts")[0]
+                            .GetProperty("text")
+                            .GetString();
+
+                        return ServiceResult<string>.Success(
+                            aiText?.Trim()
+                            ?? "I could not generate a response.");
+                    }
+
+                    // RETRYABLE
+                    if ((int)response.StatusCode == 429 ||
+                        (int)response.StatusCode == 503)
+                    {
+                        _logger.LogWarning(
+                            "Gemini key failed with {Status}. Trying next key...",
+                            response.StatusCode);
+
+                        continue;
+                    }
+
+                    // OTHER ERRORS
+                    _logger.LogError(
+                        "Gemini error {Status}: {Body}",
+                        response.StatusCode,
+                        responseString);
+                }
+                catch (TaskCanceledException)
+                {
+                    _logger.LogWarning(
+                        "Gemini request timed out. Trying next key...");
+
+                    continue;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Gemini key failed. Trying next key...");
+                }
             }
 
-            using var doc = JsonDocument.Parse(responseString);
-            var aiText = doc.RootElement
-                .GetProperty("candidates")[0]
-                .GetProperty("content")
-                .GetProperty("parts")[0]
-                .GetProperty("text")
-                .GetString();
-
-            return ServiceResult<string>.Success(
-                aiText?.Trim() ?? "I'm sorry, I could not generate a response.");
+            return ServiceResult<string>.Failure(
+                "All AI providers are temporarily unavailable. Please try again.",
+                ServiceErrorCode.UpstreamServiceError);
         }
 
         /// <summary>Feature 4: Builds personalized context from user's skills and education</summary>
@@ -471,6 +533,12 @@ Respond in the same language the job title is written in.
                 ".json" => "application/json",
                 _ => "application/octet-stream"
             };
+        }
+        private List<string> GetGeminiApiKeys()
+        {
+            return _config
+                .GetSection("Gemini:ApiKeys")
+                .Get<List<string>>() ?? new List<string>();
         }
     }
 }

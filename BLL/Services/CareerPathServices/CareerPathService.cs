@@ -37,7 +37,7 @@ namespace BLL.Services.CareerPathServices
         private readonly ILogger<CareerPathService> _logger;
         private readonly IConfiguration _config;
         private readonly IHttpClientFactory _httpClientFactory;
-
+        private static int _currentGeminiKeyIndex = 0;
         private const string GeminiBaseUrl =
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
@@ -346,12 +346,17 @@ namespace BLL.Services.CareerPathServices
             string? careerPathDescription = null,
             DifficultyLevel? careerPathDifficulty = null)
         {
-            var apiKey = _config["Gemini:ApiKey"];
-            if (string.IsNullOrWhiteSpace(apiKey))
-                throw new InvalidOperationException("Gemini API key is missing.");
+            var apiKeys = GetGeminiApiKeys();
 
-            var limitedCourses = courses.Take(MaxCoursesForAiPrompt).ToList();
-            var expectedCount = Math.Min(desiredCount, limitedCourses.Count);
+            if (!apiKeys.Any())
+                throw new InvalidOperationException(
+                    "No Gemini API keys configured.");
+
+            var limitedCourses =
+                courses.Take(MaxCoursesForAiPrompt).ToList();
+
+            var expectedCount =
+                Math.Min(desiredCount, limitedCourses.Count);
 
             var courseText = string.Join("\n", limitedCourses.Select(c =>
             {
@@ -392,8 +397,12 @@ Rules:
 
 Career Path:
 {careerPathName}
-Description: {careerPathDescription ?? "Not provided"}
-Difficulty: {careerPathDifficulty?.ToString() ?? "Not provided"}
+
+Description:
+{careerPathDescription ?? "Not provided"}
+
+Difficulty:
+{careerPathDifficulty?.ToString() ?? "Not provided"}
 
 Courses:
 {courseText}
@@ -403,61 +412,104 @@ Courses:
             {
                 contents = new[]
                 {
-                    new { parts = new[] { new { text = prompt } } }
+            new
+            {
+                parts = new[]
+                {
+                    new { text = prompt }
                 }
+            }
+        }
             };
 
-            var httpContent = new StringContent(
-                JsonSerializer.Serialize(body),
-                Encoding.UTF8,
-                "application/json");
+            var client =
+                _httpClientFactory.CreateClient("GeminiClient");
 
-            var client = _httpClientFactory.CreateClient("GeminiClient");
-            client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
+            int totalKeys = apiKeys.Count;
 
-            HttpResponseMessage response = null!;
-
-            for (int attempt = 1; attempt <= 3; attempt++)
+            for (int i = 0; i < totalKeys; i++)
             {
-                response = await client.PostAsync(GeminiBaseUrl, httpContent);
+                var index =
+                    Interlocked.Increment(ref _currentGeminiKeyIndex);
 
-                if (response.IsSuccessStatusCode) break;
+                var apiKey = apiKeys[index % totalKeys];
 
-                if ((int)response.StatusCode == 503 && attempt < 3)
+                try
                 {
-                    _logger.LogWarning("Gemini 503 on attempt {Attempt}, retrying...", attempt);
-                    await Task.Delay(3000);
+                    client.DefaultRequestHeaders.Remove("x-goog-api-key");
+
+                    client.DefaultRequestHeaders.TryAddWithoutValidation(
+                        "x-goog-api-key",
+                        apiKey);
+
+                    var httpContent = new StringContent(
+                        JsonSerializer.Serialize(body),
+                        Encoding.UTF8,
+                        "application/json");
+
+                    var response = await client.PostAsync(
+                        GeminiBaseUrl,
+                        httpContent);
+
+                    var responseString =
+                        await response.Content.ReadAsStringAsync();
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        using var doc =
+                            JsonDocument.Parse(responseString);
+
+                        var aiText = doc.RootElement
+                            .GetProperty("candidates")[0]
+                            .GetProperty("content")
+                            .GetProperty("parts")[0]
+                            .GetProperty("text")
+                            .GetString();
+
+                        aiText = aiText?
+                            .Replace("```json", "")
+                            .Replace("```", "")
+                            .Trim();
+
+                        var options = new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        };
+
+                        var result =
+                            JsonSerializer.Deserialize<List<CourseRecommendation>>(
+                                aiText ?? "[]",
+                                options);
+
+                        if (result != null && result.Any())
+                            return result;
+                    }
+
+                    if ((int)response.StatusCode == 429 ||
+                        (int)response.StatusCode == 503)
+                    {
+                        _logger.LogWarning(
+                            "Gemini key failed with {Status}. Trying next key...",
+                            response.StatusCode);
+
+                        continue;
+                    }
+
+                    _logger.LogError(
+                        "Gemini error {Status}: {Body}",
+                        response.StatusCode,
+                        responseString);
                 }
-                else
+                catch (Exception ex)
                 {
-                    throw new HttpRequestException(
-                        $"Gemini API failed with status {response.StatusCode}");
+                    _logger.LogError(
+                        ex,
+                        "Gemini key failed. Trying next key...");
                 }
             }
 
-            var responseString = await response.Content.ReadAsStringAsync();
-
-            if (!response.IsSuccessStatusCode)
-                throw new Exception($"Gemini error: {responseString}");
-
-            using var doc = JsonDocument.Parse(responseString);
-
-            var aiText = doc.RootElement
-                .GetProperty("candidates")[0]
-                .GetProperty("content")
-                .GetProperty("parts")[0]
-                .GetProperty("text")
-                .GetString();
-
-            aiText = aiText?.Replace("```json", "").Replace("```", "").Trim();
-
-            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var result = JsonSerializer.Deserialize<List<CourseRecommendation>>(aiText ?? "[]", options);
-
-            if (result == null || !result.Any())
-                throw new Exception("AI returned empty or invalid course plan.");
-
-            return result;
+            throw new Exception(
+                "All Gemini API keys failed.");
         }
 
         // ── AI: Prerequisites & Expected Outcomes ──────────────────────────────────────
@@ -468,17 +520,20 @@ Courses:
         {
             try
             {
-                var apiKey = _config["Gemini:ApiKey"];
-                if (string.IsNullOrWhiteSpace(apiKey))
+                var apiKeys = GetGeminiApiKeys();
+
+                if (!apiKeys.Any())
                 {
-                    _logger.LogWarning("Gemini API key missing.");
+                    _logger.LogWarning(
+                        "No Gemini API keys configured.");
+
                     return null;
                 }
 
                 var prompt = $@"
 You are an AI Career Path Designer.
 
-Return ONLY valid JSON object with exactly two properties:
+Return ONLY valid JSON object:
 
 {{
   ""Prerequisites"": string,
@@ -490,54 +545,118 @@ Rules:
 - No markdown
 - No explanation
 
-Career Path Name: {careerPathName}
-Description: {careerPathDescription ?? "Not provided"}
-Difficulty: {careerPathDifficulty?.ToString() ?? "Not provided"}
+Career Path Name:
+{careerPathName}
+
+Description:
+{careerPathDescription ?? "Not provided"}
+
+Difficulty:
+{careerPathDifficulty?.ToString() ?? "Not provided"}
 ";
 
                 var body = new
                 {
                     contents = new[]
                     {
-                        new { parts = new[] { new { text = prompt } } }
+                new
+                {
+                    parts = new[]
+                    {
+                        new { text = prompt }
                     }
+                }
+            }
                 };
 
-                var httpContent = new StringContent(
-                    JsonSerializer.Serialize(body),
-                    Encoding.UTF8,
-                    "application/json");
+                var client =
+                    _httpClientFactory.CreateClient("GeminiClient");
 
-                var client = _httpClientFactory.CreateClient("GeminiClient");
-                client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
+                int totalKeys = apiKeys.Count;
 
-                var response = await client.PostAsync(GeminiBaseUrl, httpContent);
-                var responseString = await response.Content.ReadAsStringAsync();
-
-                if (!response.IsSuccessStatusCode)
+                for (int i = 0; i < totalKeys; i++)
                 {
-                    _logger.LogError("Gemini details error: {Body}", responseString);
-                    return null;
+                    var index =
+                        Interlocked.Increment(ref _currentGeminiKeyIndex);
+
+                    var apiKey = apiKeys[index % totalKeys];
+
+                    try
+                    {
+                        client.DefaultRequestHeaders.Remove("x-goog-api-key");
+
+                        client.DefaultRequestHeaders.TryAddWithoutValidation(
+                            "x-goog-api-key",
+                            apiKey);
+
+                        var httpContent = new StringContent(
+                            JsonSerializer.Serialize(body),
+                            Encoding.UTF8,
+                            "application/json");
+
+                        var response = await client.PostAsync(
+                            GeminiBaseUrl,
+                            httpContent);
+
+                        var responseString =
+                            await response.Content.ReadAsStringAsync();
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            using var doc =
+                                JsonDocument.Parse(responseString);
+
+                            var aiText = doc.RootElement
+                                .GetProperty("candidates")[0]
+                                .GetProperty("content")
+                                .GetProperty("parts")[0]
+                                .GetProperty("text")
+                                .GetString();
+
+                            aiText = aiText?
+                                .Replace("```json", "")
+                                .Replace("```", "")
+                                .Trim();
+
+                            return JsonSerializer.Deserialize<AiCareerPathDetails>(
+                                aiText ?? "{}",
+                                new JsonSerializerOptions
+                                {
+                                    PropertyNameCaseInsensitive = true
+                                });
+                        }
+
+                        if ((int)response.StatusCode == 429 ||
+                            (int)response.StatusCode == 503)
+                        {
+                            _logger.LogWarning(
+                                "Gemini key failed with {Status}. Trying next key...",
+                                response.StatusCode);
+
+                            continue;
+                        }
+
+                        _logger.LogError(
+                            "Gemini error {Status}: {Body}",
+                            response.StatusCode,
+                            responseString);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(
+                            ex,
+                            "Gemini key failed. Trying next key...");
+                    }
                 }
 
-                using var doc = JsonDocument.Parse(responseString);
-
-                var aiText = doc.RootElement
-                    .GetProperty("candidates")[0]
-                    .GetProperty("content")
-                    .GetProperty("parts")[0]
-                    .GetProperty("text")
-                    .GetString();
-
-                aiText = aiText?.Replace("```json", "").Replace("```", "").Trim();
-
-                return JsonSerializer.Deserialize<AiCareerPathDetails>(
-                    aiText ?? "{}",
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                return null;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to generate career path details.");
+                _logger.LogError(
+                    ex,
+                    "Failed to generate career path details.");
+
                 return null;
             }
         }
@@ -664,6 +783,12 @@ Difficulty: {careerPathDifficulty?.ToString() ?? "Not provided"}
                     "An error occurred while updating the career path.",
                     ServiceErrorCode.UpstreamServiceError);
             }
+        }
+        private List<string> GetGeminiApiKeys()
+        {
+            return _config
+                .GetSection("Gemini:ApiKeys")
+                .Get<List<string>>() ?? new List<string>();
         }
     }
 }
