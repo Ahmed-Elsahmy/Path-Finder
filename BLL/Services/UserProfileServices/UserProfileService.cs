@@ -1,22 +1,15 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using AutoMapper;
 using BLL.Common;
-using BLL.Dtos.EducationDtos;
 using BLL.Dtos.UserProfileDtos;
 using DAL.Models;
 using DAL.Repository;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.Extensions.Logging;
 
 namespace BLL.Services.UserProfileServices
 {
-    public class UserProfileService:IUserProfileService
+    public class UserProfileService : IUserProfileService
     {
         private readonly IRepository<UserProfile> _userprofileRepository;
         private readonly IWebHostEnvironment _env;

@@ -26,7 +26,7 @@ namespace BLL.Services.CvService
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IMapper _mapper;
         private readonly ILogger<CvService> _logger;
-
+        private static int _currentGeminiKeyIndex = 0;
         private const string GeminiBaseUrl =
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
@@ -53,31 +53,85 @@ namespace BLL.Services.CvService
             object requestBody,
             CancellationToken ct = default)
         {
-            var apiKey = _config["Gemini:ApiKey"];
-            var client = _httpClientFactory.CreateClient("GeminiClient");
-            client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
+            var apiKeys = GetGeminiApiKeys();
 
-            var httpContent = new StringContent(
-                JsonSerializer.Serialize(requestBody),
-                Encoding.UTF8,
-                "application/json");
+            if (!apiKeys.Any())
+                throw new Exception(
+                    "No Gemini API keys configured.");
 
-            HttpResponseMessage response = null!;
-            for (int attempt = 1; attempt <= 3; attempt++)
+            var client =
+                _httpClientFactory.CreateClient("GeminiClient");
+
+            int totalKeys = apiKeys.Count;
+
+            for (int i = 0; i < totalKeys; i++)
             {
-                response = await client.PostAsync(GeminiBaseUrl, httpContent, ct);
+                var index =
+                    Interlocked.Increment(ref _currentGeminiKeyIndex);
 
-                if (response.IsSuccessStatusCode) break;
+                var apiKey = apiKeys[index % totalKeys];
 
-                if ((int)response.StatusCode == 503 && attempt < 3)
+                try
                 {
-                    _logger.LogWarning("Gemini 503 on attempt {Attempt}, retrying in 3s...", attempt);
-                    await Task.Delay(3000, ct);
+                    client.DefaultRequestHeaders.Remove("x-goog-api-key");
+
+                    client.DefaultRequestHeaders.TryAddWithoutValidation(
+                        "x-goog-api-key",
+                        apiKey);
+
+                    using var httpContent = new StringContent(
+                        JsonSerializer.Serialize(requestBody),
+                        Encoding.UTF8,
+                        "application/json");
+
+                    var response = await client.PostAsync(
+                        GeminiBaseUrl,
+                        httpContent,
+                        ct);
+
+                    // SUCCESS
+                    if (response.IsSuccessStatusCode)
+                    {
+                        return response;
+                    }
+
+                    var responseBody =
+                        await response.Content.ReadAsStringAsync(ct);
+
+                    // RETRYABLE ERRORS
+                    if ((int)response.StatusCode == 429 ||
+                        (int)response.StatusCode == 503)
+                    {
+                        _logger.LogWarning(
+                            "Gemini key failed with {Status}. Trying next key...",
+                            response.StatusCode);
+
+                        continue;
+                    }
+
+                    // OTHER ERRORS
+                    _logger.LogError(
+                        "Gemini error {Status}: {Body}",
+                        response.StatusCode,
+                        responseBody);
                 }
-                else break;
+                catch (TaskCanceledException)
+                {
+                    _logger.LogWarning(
+                        "Gemini request timed out. Trying next key...");
+
+                    continue;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Gemini key failed. Trying next key...");
+                }
             }
 
-            return response;
+            throw new Exception(
+                "All Gemini API keys failed.");
         }
         public async Task<ServiceResult<string>> UploadCvAsync(string userId, UploadCvRQ request, string baseUrl)
         {
@@ -230,13 +284,6 @@ namespace BLL.Services.CvService
             var emptyResult = new CvAiResult();
             try
             {
-                var apiKey = _config["Gemini:ApiKey"];
-                if (string.IsNullOrEmpty(apiKey) || apiKey == "YOUR_GEMINI_API_KEY_HERE")
-                {
-                    emptyResult.ParsedContent = "API Error: Key Missing";
-                    emptyResult.CVIssues.Add("Make sure Gemini:ApiKey is in appsettings.json or User Secrets");
-                    return emptyResult;
-                }
 
                 var prompt = $@"
 Analyze the following CV/Resume thoroughly. Return a JSON object with these exact keys:
@@ -523,9 +570,6 @@ CV Text:
         {
             try
             {
-                var apiKey = _config["Gemini:ApiKey"];
-                if (string.IsNullOrWhiteSpace(apiKey))
-                    return (null, "Gemini API key is missing from configuration.");
 
                 var cvBlocks = string.Join("\n\n", cvs.Select((cv, i) =>
                     $"--- CV {i + 1} (ID: {cv.CVId}, File: {cv.FileName}) ---\n" +
@@ -616,6 +660,12 @@ The JSON must have exactly these keys:
                 _logger.LogError(ex, "Gemini comparison request failed");
                 return (null, $"Unexpected error calling Gemini: {ex.Message}");
             }
+        }
+        private List<string> GetGeminiApiKeys()
+        {
+            return _config
+                .GetSection("Gemini:ApiKeys")
+                .Get<List<string>>() ?? new List<string>();
         }
     }
 }

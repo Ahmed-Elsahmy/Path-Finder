@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using BLL.Common;
@@ -24,7 +24,7 @@ namespace BLL.Services.QuestionnaireServices
         private readonly IConfiguration _config;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<QuestionnaireService> _logger;
-
+        private static int _currentGeminiKeyIndex = 0;
         private const string CareerAssessmentType = "CareerDiscovery";
         private const string GeminiBaseUrl =
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
@@ -599,21 +599,28 @@ namespace BLL.Services.QuestionnaireServices
             List<CareerPathCandidate> candidates,
             CancellationToken cancellationToken)
         {
-            var apiKey = _config["Gemini:ApiKey"];
-            if (string.IsNullOrWhiteSpace(apiKey))
+            var apiKeys = GetGeminiApiKeys();
+
+            if (!apiKeys.Any())
             {
+                _logger.LogWarning(
+                    "No Gemini API keys configured.");
+
                 return null;
             }
 
             try
             {
-                var questionLookup = orderedQuestions.ToDictionary(q => q.QuestionId);
+                var questionLookup =
+                    orderedQuestions.ToDictionary(q => q.QuestionId);
+
                 var answersPayload = answeredResponses
                     .OrderBy(r => questionLookup[r.QuestionId].OrderNumber)
                     .Select(r => new
                     {
                         r.QuestionId,
-                        QuestionText = questionLookup[r.QuestionId].QuestionText,
+                        QuestionText =
+                            questionLookup[r.QuestionId].QuestionText,
                         Answer = r.Answer
                     })
                     .ToList();
@@ -621,13 +628,26 @@ namespace BLL.Services.QuestionnaireServices
                 var candidatePayload = candidates
                     .Select(candidate => new
                     {
-                        CareerPathId = candidate.Path.CareerPathId,
-                        PathName = candidate.Path.PathName,
+                        CareerPathId =
+                            candidate.Path.CareerPathId,
+
+                        PathName =
+                            candidate.Path.PathName,
+
                         candidate.Path.Description,
-                        Category = candidate.Path.Category?.Name,
-                        SubCategory = candidate.Path.SubCategory?.Name,
-                        DifficultyLevel = candidate.Path.DifficultyLevel?.ToString(),
-                        EstimatedDurationMonths = candidate.Path.EstimatedDurationMonths,
+
+                        Category =
+                            candidate.Path.Category?.Name,
+
+                        SubCategory =
+                            candidate.Path.SubCategory?.Name,
+
+                        DifficultyLevel =
+                            candidate.Path.DifficultyLevel?.ToString(),
+
+                        EstimatedDurationMonths =
+                            candidate.Path.EstimatedDurationMonths,
+
                         candidate.Path.Prerequisites,
                         candidate.Path.ExpectedOutcomes,
                         candidate.Path.TotalCourses
@@ -636,19 +656,25 @@ namespace BLL.Services.QuestionnaireServices
 
                 var prompt = $@"
 You are Path Finder AI.
-Analyze the user's career-assessment answers and rank ONLY the career paths provided below.
 
-Return ONLY valid JSON with this exact schema:
+Analyze the user's career-assessment answers
+and rank ONLY the career paths provided below.
+
+Return ONLY valid JSON.
+
+Schema:
 {{
   ""ProfileSummary"": ""string"",
   ""RecommendationStrategy"": ""string"",
   ""TopTraits"": [""string""],
+
   ""ResponseInsights"": [
     {{
       ""QuestionId"": 0,
       ""AIAnalysis"": ""string""
     }}
   ],
+
   ""Recommendations"": [
     {{
       ""CareerPathId"": 0,
@@ -663,44 +689,59 @@ Return ONLY valid JSON with this exact schema:
 }}
 
 Rules:
-- Recommend between 3 and 5 career paths.
-- CareerPathId must come from the provided list only.
-- Sort recommendations by SuitabilityScore descending.
-- SuitabilityScore must be an integer from 0 to 100.
-- MatchReason should be short and direct.
-- StrengthSignals should contain 2 or 3 short bullet-style strings.
-- GrowthAreas should contain 1 to 3 short bullet-style strings.
-- SuggestedNextStep should be a single actionable sentence.
-- Include one ResponseInsight for every answered question.
-- No markdown, no prose outside JSON.
+- Recommend between 3 and 5 career paths
+- CareerPathId must exist in provided list
+- SuitabilityScore: 0 → 100
+- No markdown
+- No prose outside JSON
 
 Questionnaire:
 {JsonSerializer.Serialize(new
-{
-    questionnaire.QuestionnaireId,
-    questionnaire.Title,
-    questionnaire.Description,
-    questionnaire.QuestionnaireType
-}, new JsonSerializerOptions { WriteIndented = true })}
+                {
+                    questionnaire.QuestionnaireId,
+                    questionnaire.Title,
+                    questionnaire.Description,
+                    questionnaire.QuestionnaireType
+                }, new JsonSerializerOptions { WriteIndented = true })}
 
 UserProfile:
 {JsonSerializer.Serialize(new
-{
-    Skills = userContext.Skills,
-    Education = userContext.Education,
-    Experience = userContext.Experiences
-}, new JsonSerializerOptions { WriteIndented = true })}
+                {
+                    Skills = userContext.Skills,
+                    Education = userContext.Education,
+                    Experience = userContext.Experiences
+                }, new JsonSerializerOptions { WriteIndented = true })}
 
 Answers:
-{JsonSerializer.Serialize(answersPayload, new JsonSerializerOptions { WriteIndented = true })}
+{JsonSerializer.Serialize(
+            answersPayload,
+            new JsonSerializerOptions
+            {
+                WriteIndented = true
+            })}
 
 CareerPaths:
-{JsonSerializer.Serialize(candidatePayload, new JsonSerializerOptions { WriteIndented = true })}
+{JsonSerializer.Serialize(
+            candidatePayload,
+            new JsonSerializerOptions
+            {
+                WriteIndented = true
+            })}
 ";
 
                 var requestBody = new
                 {
-                    contents = new[] { new { parts = new[] { new { text = prompt } } } },
+                    contents = new[]
+                    {
+                new
+                {
+                    parts = new[]
+                    {
+                        new { text = prompt }
+                    }
+                }
+            },
+
                     generationConfig = new
                     {
                         temperature = 0.3,
@@ -708,70 +749,119 @@ CareerPaths:
                     }
                 };
 
-                var client = _httpClientFactory.CreateClient("GeminiClient");
-                client.DefaultRequestHeaders.Remove("x-goog-api-key");
-                client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
+                var client =
+                    _httpClientFactory.CreateClient("GeminiClient");
 
-                HttpResponseMessage? response = null;
-                for (var attempt = 1; attempt <= 3; attempt++)
+                int totalKeys = apiKeys.Count;
+
+                for (int i = 0; i < totalKeys; i++)
                 {
-                    using var content = new StringContent(
-                        JsonSerializer.Serialize(requestBody),
-                        Encoding.UTF8,
-                        "application/json");
+                    var index =
+                        Interlocked.Increment(ref _currentGeminiKeyIndex);
 
-                    response = await client.PostAsync(GeminiBaseUrl, content, cancellationToken);
-                    if (response.IsSuccessStatusCode)
+                    var apiKey = apiKeys[index % totalKeys];
+
+                    try
                     {
-                        break;
+                        client.DefaultRequestHeaders.Remove("x-goog-api-key");
+
+                        client.DefaultRequestHeaders.TryAddWithoutValidation(
+                            "x-goog-api-key",
+                            apiKey);
+
+                        using var content = new StringContent(
+                            JsonSerializer.Serialize(requestBody),
+                            Encoding.UTF8,
+                            "application/json");
+
+                        var response = await client.PostAsync(
+                            GeminiBaseUrl,
+                            content,
+                            cancellationToken);
+
+                        var raw =
+                            await response.Content.ReadAsStringAsync(
+                                cancellationToken);
+
+                        // SUCCESS
+                        if (response.IsSuccessStatusCode)
+                        {
+                            using var document =
+                                JsonDocument.Parse(raw);
+
+                            var generatedText =
+                                document.RootElement
+                                    .GetProperty("candidates")[0]
+                                    .GetProperty("content")
+                                    .GetProperty("parts")[0]
+                                    .GetProperty("text")
+                                    .GetString();
+
+                            if (string.IsNullOrWhiteSpace(generatedText))
+                                continue;
+
+                            var cleanedJson = generatedText
+                                .Replace(
+                                    "```json",
+                                    string.Empty,
+                                    StringComparison.OrdinalIgnoreCase)
+                                .Replace(
+                                    "```",
+                                    string.Empty,
+                                    StringComparison.OrdinalIgnoreCase)
+                                .Trim();
+
+                            var parsedResult =
+                                JsonSerializer.Deserialize<AssessmentAiResult>(
+                                    cleanedJson,
+                                    JsonOptions);
+
+                            return SanitizeAiResult(
+                                parsedResult,
+                                candidates,
+                                answeredResponses);
+                        }
+
+                        // RETRYABLE
+                        if ((int)response.StatusCode == 429 ||
+                            (int)response.StatusCode == 503)
+                        {
+                            _logger.LogWarning(
+                                "Gemini key failed with {Status}. Trying next key...",
+                                response.StatusCode);
+
+                            continue;
+                        }
+
+                        // OTHER ERRORS
+                        _logger.LogError(
+                            "Gemini career assessment failed with status {Status}. Body: {Body}",
+                            response.StatusCode,
+                            raw);
                     }
-
-                    if ((int)response.StatusCode == 503 && attempt < 3)
+                    catch (TaskCanceledException)
                     {
-                        _logger.LogWarning("Gemini returned 503 for career assessment attempt {Attempt}. Retrying.", attempt);
-                        await Task.Delay(2500, cancellationToken);
+                        _logger.LogWarning(
+                            "Gemini request timed out. Trying next key...");
+
                         continue;
                     }
-
-                    break;
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(
+                            ex,
+                            "Gemini key failed. Trying next key...");
+                    }
                 }
 
-                if (response == null)
-                {
-                    return null;
-                }
-
-                var raw = await response.Content.ReadAsStringAsync(cancellationToken);
-                if (!response.IsSuccessStatusCode)
-                {
-                    _logger.LogError("Gemini career assessment failed with status {Status}. Body: {Body}", response.StatusCode, raw);
-                    return null;
-                }
-
-                using var document = JsonDocument.Parse(raw);
-                var generatedText = document.RootElement
-                    .GetProperty("candidates")[0]
-                    .GetProperty("content")
-                    .GetProperty("parts")[0]
-                    .GetProperty("text")
-                    .GetString();
-
-                if (string.IsNullOrWhiteSpace(generatedText))
-                {
-                    return null;
-                }
-
-                var cleanedJson = generatedText
-                    .Replace("```json", string.Empty, StringComparison.OrdinalIgnoreCase)
-                    .Replace("```", string.Empty, StringComparison.OrdinalIgnoreCase)
-                    .Trim();
-
-                var parsedResult = JsonSerializer.Deserialize<AssessmentAiResult>(cleanedJson, JsonOptions);
-                return SanitizeAiResult(parsedResult, candidates, answeredResponses);
+                return null;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Career assessment AI generation failed.");
+                _logger.LogError(
+                    ex,
+                    "Career assessment AI generation failed.");
+
                 return null;
             }
         }
@@ -1171,7 +1261,12 @@ CareerPaths:
                 .Take(maxCount)
                 .ToList();
         }
-
+        private List<string> GetGeminiApiKeys()
+        {
+            return _config
+                .GetSection("Gemini:ApiKeys")
+                .Get<List<string>>() ?? new List<string>();
+        }
         private static List<string> SplitTextIntoBullets(string? text, int maxCount)
         {
             if (string.IsNullOrWhiteSpace(text))

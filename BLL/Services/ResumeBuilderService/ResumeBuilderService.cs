@@ -20,7 +20,7 @@ namespace BLL.Services.ResumeBuilderService
         private readonly IConfiguration _config;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<ResumeBuilderService> _logger;
-
+        private static int _currentGeminiKeyIndex = 0;
         private const string GeminiBaseUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
         public ResumeBuilderService(
@@ -132,60 +132,210 @@ namespace BLL.Services.ResumeBuilderService
             return sb.ToString();
         }
 
-        private async Task<ResumeBuilderRS?> GenerateWithGeminiAsync(string userData, ResumeBuilderRQ request, CancellationToken ct)
+        private async Task<ResumeBuilderRS?> GenerateWithGeminiAsync(
+            string userData,
+            ResumeBuilderRQ request,
+            CancellationToken ct)
         {
             try
             {
-                var apiKey = _config["Gemini:ApiKey"];
-                if (string.IsNullOrWhiteSpace(apiKey)) return null;
+                var apiKeys = GetGeminiApiKeys();
+
+                if (!apiKeys.Any())
+                {
+                    _logger.LogWarning(
+                        "No Gemini API keys configured.");
+
+                    return null;
+                }
 
                 var prompt = $@"
-You are an expert resume writer. Generate a professional resume based purely on the user's data provided below.
-Refine bullet points using action verbs. Correct grammar. 
+You are an expert resume writer.
+
+Generate a professional resume based purely
+on the user's data provided below.
+
+Refine bullet points using action verbs.
+Correct grammar.
 
 USER DATA:
 {userData}
 
-Preferences: Target Job: {request.TargetJobTitle ?? "Not specific"}, Style: {request.Style}, Language: {request.Language}.
-Return ONLY a valid JSON object tracking the schema defined. Do NOT use markdown code blocks like ```json.
+Preferences:
+Target Job: {request.TargetJobTitle ?? "Not specific"}
+Style: {request.Style}
+Language: {request.Language}
+
+Return ONLY valid JSON.
 
 Schema:
 {{
-  ""FullName"": """", ""Email"": """", ""Phone"": """", ""Location"": """",
+  ""FullName"": """",
+  ""Email"": """",
+  ""Phone"": """",
+  ""Location"": """",
   ""ProfessionalSummary"": """",
-  ""SkillSections"":[{{ ""Category"": """", ""Skills"": [] }}],
-  ""Experience"":[{{ ""Position"": """", ""Company"": """", ""Duration"": """", ""BulletPoints"": [] }}],
-  ""Education"":[{{ ""Degree"": """", ""Institution"": """", ""Duration"": """", ""FieldOfStudy"": """" }}],
-  ""Certifications"":[], ""AdditionalSections"": """",
-  ""FullResumeText"": """", ""AITips"": """"
-}}";
+  ""SkillSections"": [
+    {{
+      ""Category"": """",
+      ""Skills"": []
+    }}
+  ],
+  ""Experience"": [
+    {{
+      ""Position"": """",
+      ""Company"": """",
+      ""Duration"": """",
+      ""BulletPoints"": []
+    }}
+  ],
+  ""Education"": [
+    {{
+      ""Degree"": """",
+      ""Institution"": """",
+      ""Duration"": """",
+      ""FieldOfStudy"": """"
+    }}
+  ],
+  ""Certifications"": [],
+  ""AdditionalSections"": """",
+  ""FullResumeText"": """",
+  ""AITips"": """"
+}}
+";
+
                 var body = new
                 {
-                    contents = new[] { new { parts = new[] { new { text = prompt } } } },
-                    generationConfig = new { temperature = 0.4, responseMimeType = "application/json" }
+                    contents = new[]
+                    {
+                new
+                {
+                    parts = new[]
+                    {
+                        new { text = prompt }
+                    }
+                }
+            },
+
+                    generationConfig = new
+                    {
+                        temperature = 0.4,
+                        responseMimeType = "application/json"
+                    }
                 };
 
-                var client = _httpClientFactory.CreateClient("GeminiClient");
-                client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
+                var client =
+                    _httpClientFactory.CreateClient("GeminiClient");
 
-                var httpContent = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-                var response = await client.PostAsync(GeminiBaseUrl, httpContent, ct);
+                int totalKeys = apiKeys.Count;
 
-                if (!response.IsSuccessStatusCode) return null;
+                for (int i = 0; i < totalKeys; i++)
+                {
+                    var index =
+                        Interlocked.Increment(ref _currentGeminiKeyIndex);
 
-                var raw = await response.Content.ReadAsStringAsync(ct);
-                using var doc = JsonDocument.Parse(raw);
-                var aiText = doc.RootElement.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString();
+                    var apiKey = apiKeys[index % totalKeys];
 
-                aiText = aiText?.Replace("```json", "").Replace("```", "").Trim();
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                return JsonSerializer.Deserialize<ResumeBuilderRS>(aiText ?? "{}", options);
+                    try
+                    {
+                        client.DefaultRequestHeaders.Remove("x-goog-api-key");
+
+                        client.DefaultRequestHeaders.TryAddWithoutValidation(
+                            "x-goog-api-key",
+                            apiKey);
+
+                        var httpContent = new StringContent(
+                            JsonSerializer.Serialize(body),
+                            Encoding.UTF8,
+                            "application/json");
+
+                        var response = await client.PostAsync(
+                            GeminiBaseUrl,
+                            httpContent,
+                            ct);
+
+                        // SUCCESS
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var raw =
+                                await response.Content.ReadAsStringAsync(ct);
+
+                            using var doc =
+                                JsonDocument.Parse(raw);
+
+                            var aiText = doc.RootElement
+                                .GetProperty("candidates")[0]
+                                .GetProperty("content")
+                                .GetProperty("parts")[0]
+                                .GetProperty("text")
+                                .GetString();
+
+                            aiText = aiText?
+                                .Replace("```json", "")
+                                .Replace("```", "")
+                                .Trim();
+
+                            var options = new JsonSerializerOptions
+                            {
+                                PropertyNameCaseInsensitive = true
+                            };
+
+                            return JsonSerializer.Deserialize<ResumeBuilderRS>(
+                                aiText ?? "{}",
+                                options);
+                        }
+
+                        var responseString =
+                            await response.Content.ReadAsStringAsync(ct);
+
+                        // RETRYABLE ERRORS
+                        if ((int)response.StatusCode == 429 ||
+                            (int)response.StatusCode == 503)
+                        {
+                            _logger.LogWarning(
+                                "Gemini key failed with {Status}. Trying next key...",
+                                response.StatusCode);
+
+                            continue;
+                        }
+
+                        // OTHER ERRORS
+                        _logger.LogError(
+                            "Gemini error {Status}: {Body}",
+                            response.StatusCode,
+                            responseString);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        _logger.LogWarning(
+                            "Gemini request timed out. Trying next key...");
+
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(
+                            ex,
+                            "Gemini key failed. Trying next key...");
+                    }
+                }
+
+                return null;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Gemini API failed");
+                _logger.LogError(
+                    ex,
+                    "Gemini API failed");
+
                 return null;
             }
+        }
+        private List<string> GetGeminiApiKeys()
+        {
+            return _config
+                .GetSection("Gemini:ApiKeys")
+                .Get<List<string>>() ?? new List<string>();
         }
     }
 }

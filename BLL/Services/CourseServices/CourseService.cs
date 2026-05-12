@@ -33,7 +33,7 @@ namespace BLL.Services.CourseService
         private readonly IConfiguration _config;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IServiceScopeFactory _scopeFactory;
-
+        private static int _currentGeminiKeyIndex = 0;
         private const string GeminiBaseUrl =
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
@@ -283,109 +283,220 @@ namespace BLL.Services.CourseService
                     courseId);
             }
         }
-        private async Task ExtractAndAssignSkillsAsync(int courseId, string courseName, string? courseDescription)
+        private async Task ExtractAndAssignSkillsAsync(
+          int courseId,
+          string courseName,
+          string? courseDescription)
         {
             try
             {
-                var apiKey = _config["Gemini:ApiKey"];
-                if (string.IsNullOrWhiteSpace(apiKey))
+                var apiKeys = GetGeminiApiKeys();
+
+                if (!apiKeys.Any())
                 {
-                    _logger.LogWarning("Gemini API key is missing. Skill extraction aborted.");
+                    _logger.LogWarning(
+                        "No Gemini API keys configured.");
+
                     return;
                 }
 
-                _logger.LogInformation("Starting skill extraction for CourseId: {CourseId}", courseId);
+                _logger.LogInformation(
+                    "Starting skill extraction for CourseId: {CourseId}",
+                    courseId);
 
                 var prompt = $@"
-Analyze the following course name and description. Return ONLY a JSON array of objects representing the professional and technical skills this course teaches.
-Each object MUST have exactly two string properties:
-1. ""SkillName"": The name of the skill.
-2. ""SkillLevel"": Determine the level of this skill based on the course description (ONLY use one of these words: 'Beginner', 'Intermediate', or 'Advanced').
-Do not use markdown formatting or ```json.
-Course Name: {courseName}
-Description: {courseDescription}";
+Analyze the following course name and description.
+
+Return ONLY a JSON array of objects.
+
+Each object MUST contain:
+
+1. ""SkillName""
+2. ""SkillLevel""
+
+SkillLevel MUST be one of:
+- Beginner
+- Intermediate
+- Advanced
+
+No markdown.
+No explanation.
+
+Course Name:
+{courseName}
+
+Description:
+{courseDescription}
+";
 
                 var body = new
                 {
                     contents = new[]
                     {
-                        new { parts = new[] { new { text = prompt } } }
+                new
+                {
+                    parts = new[]
+                    {
+                        new { text = prompt }
                     }
+                }
+            }
                 };
 
-                var httpContent = new StringContent(
-                    JsonSerializer.Serialize(body),
-                    Encoding.UTF8,
-                    "application/json");
+                var client =
+                    _httpClientFactory.CreateClient("GeminiClient");
 
-                var client = _httpClientFactory.CreateClient("GeminiClient");
+                int totalKeys = apiKeys.Count;
 
-                client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
+                string? aiText = null;
 
-                HttpResponseMessage response = null!;
-                for (int attempt = 1; attempt <= 3; attempt++)
+                for (int i = 0; i < totalKeys; i++)
                 {
-                    response = await client.PostAsync(GeminiBaseUrl, httpContent);
+                    var index =
+                        Interlocked.Increment(ref _currentGeminiKeyIndex);
 
-                    if (response.IsSuccessStatusCode) break;
+                    var apiKey = apiKeys[index % totalKeys];
 
-                    if ((int)response.StatusCode == 503 && attempt < 3)
+                    try
                     {
-                        _logger.LogWarning("Gemini 503 on attempt {Attempt}, retrying in 3s...", attempt);
-                        await Task.Delay(3000);
+                        client.DefaultRequestHeaders.Remove("x-goog-api-key");
+
+                        client.DefaultRequestHeaders.TryAddWithoutValidation(
+                            "x-goog-api-key",
+                            apiKey);
+
+                        var httpContent = new StringContent(
+                            JsonSerializer.Serialize(body),
+                            Encoding.UTF8,
+                            "application/json");
+
+                        var response = await client.PostAsync(
+                            GeminiBaseUrl,
+                            httpContent);
+
+                        var responseString =
+                            await response.Content.ReadAsStringAsync();
+
+                        _logger.LogInformation(
+                            "Gemini status: {Status}",
+                            response.StatusCode);
+
+                        // SUCCESS
+                        if (response.IsSuccessStatusCode)
+                        {
+                            using var doc =
+                                JsonDocument.Parse(responseString);
+
+                            aiText = doc.RootElement
+                                .GetProperty("candidates")[0]
+                                .GetProperty("content")
+                                .GetProperty("parts")[0]
+                                .GetProperty("text")
+                                .GetString();
+
+                            aiText = aiText?
+                                .Replace("```json", "")
+                                .Replace("```", "")
+                                .Trim();
+
+                            break;
+                        }
+
+                        // RETRYABLE ERRORS
+                        if ((int)response.StatusCode == 429 ||
+                            (int)response.StatusCode == 503)
+                        {
+                            _logger.LogWarning(
+                                "Gemini key failed with {Status}. Trying next key...",
+                                response.StatusCode);
+
+                            continue;
+                        }
+
+                        // OTHER ERRORS
+                        _logger.LogError(
+                            "Gemini error response: {Body}",
+                            responseString);
                     }
-                    else break;
+                    catch (TaskCanceledException)
+                    {
+                        _logger.LogWarning(
+                            "Gemini request timed out. Trying next key...");
+
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(
+                            ex,
+                            "Gemini key failed. Trying next key...");
+                    }
                 }
 
-                var responseString = await response.Content.ReadAsStringAsync();
-                _logger.LogInformation("Gemini status: {Status}", response.StatusCode);
-
-                if (!response.IsSuccessStatusCode)
+                if (string.IsNullOrWhiteSpace(aiText))
                 {
-                    _logger.LogError("Gemini error response: {Body}", responseString);
+                    _logger.LogWarning(
+                        "No AI response received for skill extraction.");
+
                     return;
                 }
 
-                using var doc = JsonDocument.Parse(responseString);
-                var aiText = doc.RootElement
-                    .GetProperty("candidates")[0]
-                    .GetProperty("content")
-                    .GetProperty("parts")[0]
-                    .GetProperty("text").GetString();
+                _logger.LogInformation(
+                    "AI extracted text: {Text}",
+                    aiText);
 
-                aiText = aiText?.Replace("```json", "").Replace("```", "").Trim();
-                _logger.LogInformation("AI extracted text: {Text}", aiText);
-
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var extractedSkills = JsonSerializer.Deserialize<List<AiExtractedSkill>>(aiText ?? "[]", options);
-
-                _logger.LogInformation("Skills parsed count: {Count}", extractedSkills?.Count ?? 0);
-
-                if (extractedSkills == null || !extractedSkills.Any())
+                var options = new JsonSerializerOptions
                 {
-                    _logger.LogWarning("No skills extracted from AI response.");
+                    PropertyNameCaseInsensitive = true
+                };
+
+                var extractedSkills =
+                    JsonSerializer.Deserialize<List<AiExtractedSkill>>(
+                        aiText,
+                        options);
+
+                _logger.LogInformation(
+                    "Skills parsed count: {Count}",
+                    extractedSkills?.Count ?? 0);
+
+                if (extractedSkills == null ||
+                    !extractedSkills.Any())
+                {
+                    _logger.LogWarning(
+                        "No skills extracted from AI response.");
+
                     return;
                 }
 
                 using var scope = _scopeFactory.CreateScope();
-                var skillRepo = scope.ServiceProvider.GetRequiredService<IRepository<Skill>>();
-                var courseSkillRepo = scope.ServiceProvider.GetRequiredService<IRepository<CourseSkill>>();
+
+                var skillRepo =
+                    scope.ServiceProvider
+                        .GetRequiredService<IRepository<Skill>>();
+
+                var courseSkillRepo =
+                    scope.ServiceProvider
+                        .GetRequiredService<IRepository<CourseSkill>>();
 
                 foreach (var item in extractedSkills)
                 {
-                    if (string.IsNullOrWhiteSpace(item.SkillName)) continue;
+                    if (string.IsNullOrWhiteSpace(item.SkillName))
+                        continue;
 
-                    var safeName = item.SkillName.Length > 200
-                        ? item.SkillName.Substring(0, 200)
-                        : item.SkillName;
+                    var safeName =
+                        item.SkillName.Length > 200
+                            ? item.SkillName[..200]
+                            : item.SkillName;
 
-                    var safeLevel = string.IsNullOrWhiteSpace(item.SkillLevel)
-                        ? "Beginner"
-                        : item.SkillLevel;
+                    var safeLevel =
+                        string.IsNullOrWhiteSpace(item.SkillLevel)
+                            ? "Beginner"
+                            : item.SkillLevel;
 
-                    // Find or create the skill globally
                     var globalSkill = await skillRepo.Query()
-                        .FirstOrDefaultAsync(s => s.SkillName.ToLower() == safeName.ToLower());
+                        .FirstOrDefaultAsync(s =>
+                            s.SkillName.ToLower() ==
+                            safeName.ToLower());
 
                     if (globalSkill == null)
                     {
@@ -395,33 +506,50 @@ Description: {courseDescription}";
                             Category = "Course Extracted",
                             IsTechnical = true
                         };
+
                         await skillRepo.AddAsync(globalSkill);
                         await skillRepo.SaveChangesAsync();
-                        _logger.LogInformation("New skill created: {Name}", safeName);
+
+                        _logger.LogInformation(
+                            "New skill created: {Name}",
+                            safeName);
                     }
 
-                    // Link skill to course if not already linked
-                    var alreadyLinked = await courseSkillRepo.AnyAsync(cs =>
-                        cs.CourseId == courseId && cs.SkillId == globalSkill.SkillId);
+                    var alreadyLinked =
+                        await courseSkillRepo.AnyAsync(cs =>
+                            cs.CourseId == courseId &&
+                            cs.SkillId == globalSkill.SkillId);
 
                     if (!alreadyLinked)
                     {
-                        await courseSkillRepo.AddAsync(new CourseSkill
-                        {
-                            CourseId = courseId,
-                            SkillId = globalSkill.SkillId,
-                            SkillLevel = safeLevel
-                        });
-                        _logger.LogInformation("Skill linked: {Name} ({Level}) to CourseId {CourseId}", safeName, safeLevel, courseId);
+                        await courseSkillRepo.AddAsync(
+                            new CourseSkill
+                            {
+                                CourseId = courseId,
+                                SkillId = globalSkill.SkillId,
+                                SkillLevel = safeLevel
+                            });
+
+                        _logger.LogInformation(
+                            "Skill linked: {Name} ({Level}) to CourseId {CourseId}",
+                            safeName,
+                            safeLevel,
+                            courseId);
                     }
                 }
 
                 await courseSkillRepo.SaveChangesAsync();
-                _logger.LogInformation("All skills saved successfully for CourseId: {CourseId}", courseId);
+
+                _logger.LogInformation(
+                    "All skills saved successfully for CourseId: {CourseId}",
+                    courseId);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Skill extraction failed for CourseId: {CourseId}", courseId);
+                _logger.LogError(
+                    ex,
+                    "Skill extraction failed for CourseId: {CourseId}",
+                    courseId);
             }
         }
         public async Task<ServiceResult<string>> UpdateCourseAsync(int id, UpdateCourseRQ request, IFormCollection form)
@@ -526,6 +654,12 @@ Description: {courseDescription}";
                 _logger.LogError(ex, "Error deleting course {Id}", id);
                 return ServiceResult<string>.Failure("An error occurred.", ServiceErrorCode.UpstreamServiceError);
             }
+        }
+        private List<string> GetGeminiApiKeys()
+        {
+            return _config
+                .GetSection("Gemini:ApiKeys")
+                .Get<List<string>>() ?? new List<string>();
         }
     }
 
