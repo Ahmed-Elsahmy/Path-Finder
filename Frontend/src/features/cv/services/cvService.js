@@ -31,4 +31,11 @@ export const cvService = {
   compareCvs: async (cvIds) => {
     return apiClient.post("/Cv/compare", { cvIds }); // يرسل JSON Array
   },
+
+  // 6. إنشاء سيرة ذاتية PDF
+  generateResumePdf: async (data) => {
+    return apiClient.post("/ResumeBuilder/generate-pdf", data, {
+      responseType: 'blob'
+    });
+  },
 };

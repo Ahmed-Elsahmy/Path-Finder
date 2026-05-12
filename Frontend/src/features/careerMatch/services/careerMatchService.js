@@ -20,4 +20,9 @@ export const careerMatchService = {
     });
     return response.data;
   },
+
+  getAllCareerPaths: async () => {
+    const response = await apiClient.get("/CareerPath");
+    return response.data;
+  },
 };

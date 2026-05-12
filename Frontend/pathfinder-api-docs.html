@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PathFinder — API Flow Documentation</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.10.0/dist/tabler-icons.min.css">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0c0f1a;--bg2:#12172b;--bg3:#1a2138;--bg4:#222a44;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+  --text:#e2e8f4;--muted:#6b7fa3;--dim:#3d4f72;
+  --accent:#4f7ef7;--accent2:#7c9fff;
+  --get:#10b981;--get-bg:rgba(16,185,129,0.12);
+  --post:#3b82f6;--post-bg:rgba(59,130,246,0.12);
+  --put:#f59e0b;--put-bg:rgba(245,158,11,0.12);
+  --del:#ef4444;--del-bg:rgba(239,68,68,0.12);
+  --purple:#a78bfa;--teal:#2dd4bf;--amber:#fbbf24;--green:#4ade80;--coral:#fb7185;
+  --mono:'SF Mono','Fira Code','Fira Mono',monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.6}
+a{color:var(--accent2);text-decoration:none}
+
+/* Header */
+.header{background:var(--bg2);border-bottom:1px solid var(--border2);padding:20px 32px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-icon{width:32px;height:32px;background:linear-gradient(135deg,#4f7ef7,#7c9fff);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff}
+.logo-text{font-size:17px;font-weight:600;letter-spacing:-0.3px}
+.logo-sub{font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:-2px}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.badge-pill{background:var(--bg3);border:1px solid var(--border2);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--muted)}
+.badge-pill span{color:var(--accent2);font-weight:600}
+
+/* Layout */
+.layout{display:flex;min-height:calc(100vh - 64px)}
+.sidebar{width:220px;background:var(--bg2);border-right:1px solid var(--border);padding:20px 0;position:sticky;top:64px;height:calc(100vh - 64px);overflow-y:auto;flex-shrink:0}
+.sidebar-section{padding:8px 16px 4px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);font-weight:600}
+.sidebar-item{display:flex;align-items:center;gap:8px;padding:8px 16px;color:var(--muted);cursor:pointer;transition:all .15s;font-size:13px;border-left:2px solid transparent}
+.sidebar-item:hover{color:var(--text);background:var(--bg3)}
+.sidebar-item.active{color:var(--accent2);border-left-color:var(--accent);background:rgba(79,126,247,0.08)}
+.sidebar-item i{font-size:15px;width:18px;flex-shrink:0}
+.sidebar-count{margin-left:auto;background:var(--bg4);border-radius:10px;padding:1px 7px;font-size:10px;color:var(--muted)}
+
+/* Main */
+.main{flex:1;padding:32px;max-width:920px;overflow-x:hidden}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:32px}
+.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px 18px}
+.stat-val{font-size:28px;font-weight:700;letter-spacing:-1px;color:var(--text)}
+.stat-label{font-size:11px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
+.stat-icon{font-size:20px;margin-bottom:8px}
+
+/* Flow section */
+.flow-section{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:32px}
+.flow-title{font-size:14px;font-weight:600;color:var(--text);margin-bottom:20px;display:flex;align-items:center;gap:8px}
+.flow-title i{color:var(--accent)}
+.flows-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.flow-card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:16px}
+.flow-name{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px}
+.flow-steps{display:flex;flex-direction:column;gap:0}
+.step{display:flex;align-items:flex-start;gap:10px;padding:8px 0;position:relative}
+.step:not(:last-child)::after{content:'';position:absolute;left:11px;top:28px;width:1px;height:calc(100% - 8px);background:var(--border2)}
+.step-dot{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;margin-top:1px}
+.step-dot.auth{background:rgba(167,139,250,0.2);color:var(--purple);border:1px solid rgba(167,139,250,0.3)}
+.step-dot.course{background:rgba(59,130,246,0.2);color:#60a5fa;border:1px solid rgba(59,130,246,0.3)}
+.step-dot.job{background:rgba(251,191,36,0.2);color:var(--amber);border:1px solid rgba(251,191,36,0.3)}
+.step-dot.profile{background:rgba(45,212,191,0.2);color:var(--teal);border:1px solid rgba(45,212,191,0.3)}
+.step-info{}
+.step-title{font-size:13px;color:var(--text);font-weight:500;line-height:1.3}
+.step-path{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px}
+.step-method{display:inline-block;font-family:var(--mono);font-size:9px;font-weight:600;padding:1px 5px;border-radius:3px;margin-right:4px;vertical-align:middle}
+.m-get{background:var(--get-bg);color:var(--get)}
+.m-post{background:var(--post-bg);color:var(--post)}
+.m-put{background:var(--put-bg);color:var(--put)}
+.m-del{background:var(--del-bg);color:var(--del)}
+
+/* Module section */
+.section-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.section-title{font-size:18px;font-weight:700;letter-spacing:-0.3px}
+.section-sub{font-size:13px;color:var(--muted);margin-top:2px}
+
+/* Module card */
+.module-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden;transition:border-color .15s}
+.module-card:hover{border-color:var(--border2)}
+.module-header{display:flex;align-items:center;gap:12px;padding:14px 18px;cursor:pointer;user-select:none}
+.module-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.module-name{font-size:14px;font-weight:600;flex:1}
+.module-tag{font-size:10px;text-transform:uppercase;letter-spacing:.8px;padding:2px 8px;border-radius:4px;font-weight:500}
+.module-ep-count{font-size:12px;color:var(--muted);margin-left:8px}
+.module-toggle{font-size:18px;color:var(--muted);transition:transform .2s;flex-shrink:0}
+.module-card.open .module-toggle{transform:rotate(180deg)}
+
+/* Endpoint table */
+.ep-table{border-top:1px solid var(--border);display:none}
+.module-card.open .ep-table{display:block}
+.ep-row{display:grid;grid-template-columns:60px 1fr auto;align-items:start;gap:12px;padding:10px 18px;border-bottom:1px solid var(--border);transition:background .1s}
+.ep-row:last-child{border-bottom:none}
+.ep-row:hover{background:var(--bg3)}
+.ep-badge{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;text-align:center;min-width:48px}
+.ep-path{font-family:var(--mono);font-size:12px;color:var(--accent2);word-break:break-all}
+.ep-desc{font-size:12px;color:var(--muted);white-space:nowrap}
+.ep-params{font-size:10px;color:var(--dim);margin-top:3px;font-family:var(--mono)}
+
+/* Category colors */
+.cat-auth{color:var(--purple);background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.2)}
+.dot-auth{background:var(--purple)}
+.cat-career{color:var(--teal);background:rgba(45,212,191,0.12);border:1px solid rgba(45,212,191,0.2)}
+.dot-career{background:var(--teal)}
+.cat-courses{color:#60a5fa;background:rgba(96,165,250,0.12);border:1px solid rgba(96,165,250,0.2)}
+.dot-courses{background:#60a5fa}
+.cat-jobs{color:var(--amber);background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.2)}
+.dot-jobs{background:var(--amber)}
+.cat-profile{color:var(--coral);background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.2)}
+.dot-profile{background:var(--coral)}
+.cat-ai{color:var(--green);background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.2)}
+.dot-ai{background:var(--green)}
+.cat-platform{color:#94a3b8;background:rgba(148,163,184,0.1);border:1px solid rgba(148,163,184,0.2)}
+.dot-platform{background:#94a3b8}
+
+/* Filter tabs */
+.filter-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px}
+.filter-btn{padding:6px 14px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--border2);background:transparent;color:var(--muted);transition:all .15s}
+.filter-btn:hover{color:var(--text);border-color:var(--dim)}
+.filter-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* Divider */
+.divider{border:none;border-top:1px solid var(--border);margin:28px 0}
+
+/* Section scroll target */
+section{scroll-margin-top:80px}
+
+@media(max-width:768px){
+  .layout{flex-direction:column}
+  .sidebar{width:100%;height:auto;position:relative;top:0}
+  .flows-grid{grid-template-columns:1fr}
+  .stats{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="logo">
+    <div class="logo-icon"><i class="ti ti-map-route"></i></div>
+    <div>
+      <div class="logo-text">PathFinder</div>
+      <div class="logo-sub">API Documentation</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="badge-pill">OpenAPI <span>3.0.4</span></div>
+    <div class="badge-pill">Base: <span>pathfinder.tryasp.net</span></div>
+    <div class="badge-pill">Auth: <span>Bearer JWT</span></div>
+  </div>
+</div>
+
+<div class="layout">
+
+<!-- SIDEBAR -->
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-section">Modules</div>
+  <div class="sidebar-item active" onclick="filterModules('all',this)"><i class="ti ti-layout-grid"></i>All Modules<span class="sidebar-count" id="cnt-all">25</span></div>
+  <div class="sidebar-section" style="margin-top:8px">By Category</div>
+  <div class="sidebar-item" onclick="filterModules('auth',this)"><i class="ti ti-lock"></i>Auth<span class="sidebar-count" id="cnt-auth"></span></div>
+  <div class="sidebar-item" onclick="filterModules('career',this)"><i class="ti ti-road"></i>Career Paths<span class="sidebar-count" id="cnt-career"></span></div>
+  <div class="sidebar-item" onclick="filterModules('courses',this)"><i class="ti ti-books"></i>Courses<span class="sidebar-count" id="cnt-courses"></span></div>
+  <div class="sidebar-item" onclick="filterModules('jobs',this)"><i class="ti ti-briefcase"></i>Jobs<span class="sidebar-count" id="cnt-jobs"></span></div>
+  <div class="sidebar-item" onclick="filterModules('profile',this)"><i class="ti ti-user-circle"></i>Profile & CV<span class="sidebar-count" id="cnt-profile"></span></div>
+  <div class="sidebar-item" onclick="filterModules('ai',this)"><i class="ti ti-robot"></i>AI Tools<span class="sidebar-count" id="cnt-ai"></span></div>
+  <div class="sidebar-item" onclick="filterModules('platform',this)"><i class="ti ti-settings"></i>Platform<span class="sidebar-count" id="cnt-platform"></span></div>
+  <div class="sidebar-section" style="margin-top:8px">Flows</div>
+  <a class="sidebar-item" href="#flows"><i class="ti ti-git-branch"></i>User Journeys</a>
+  <a class="sidebar-item" href="#endpoints"><i class="ti ti-list-details"></i>All Endpoints</a>
+</nav>
+
+<!-- MAIN CONTENT -->
+<main class="main">
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-icon" style="color:var(--accent)"><i class="ti ti-api"></i></div>
+      <div class="stat-val">100+</div>
+      <div class="stat-label">Endpoints</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="color:var(--teal)"><i class="ti ti-layout-dashboard"></i></div>
+      <div class="stat-val">25</div>
+      <div class="stat-label">Modules</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="color:var(--green)"><i class="ti ti-robot"></i></div>
+      <div class="stat-val">3</div>
+      <div class="stat-label">AI Features</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="color:var(--amber)"><i class="ti ti-shield-lock"></i></div>
+      <div class="stat-val">JWT</div>
+      <div class="stat-label">Bearer Auth</div>
+    </div>
+  </div>
+
+  <!-- FLOWS -->
+  <section id="flows">
+    <div class="flow-section">
+      <div class="flow-title"><i class="ti ti-git-branch"></i> Key User Journeys</div>
+      <div class="flows-grid">
+
+        <!-- Auth Flow -->
+        <div class="flow-card">
+          <div class="flow-name">Authentication Flow</div>
+          <div class="flow-steps">
+            <div class="step"><div class="step-dot auth">1</div><div class="step-info"><div class="step-title">Register account</div><div class="step-path"><span class="step-method m-post">POST</span>/api/Auth/Register</div></div></div>
+            <div class="step"><div class="step-dot auth">2</div><div class="step-info"><div class="step-title">Confirm email via OTP</div><div class="step-path"><span class="step-method m-post">POST</span>/api/Auth/Confirm-Email</div></div></div>
+            <div class="step"><div class="step-dot auth">3</div><div class="step-info"><div class="step-title">Login (email/Google)</div><div class="step-path"><span class="step-method m-post">POST</span>/api/Auth/Login</div></div></div>
+            <div class="step"><div class="step-dot auth">4</div><div class="step-info"><div class="step-title">Use Bearer JWT token</div><div class="step-path">Authorization: Bearer &lt;token&gt;</div></div></div>
+            <div class="step"><div class="step-dot auth">5</div><div class="step-info"><div class="step-title">Forgot / reset password</div><div class="step-path"><span class="step-method m-post">POST</span>/api/Auth/Forgot-Password → Reset-Password</div></div></div>
+          </div>
+        </div>
+
+        <!-- Course Enrollment Flow -->
+        <div class="flow-card">
+          <div class="flow-name">Course Enrollment Flow</div>
+          <div class="flow-steps">
+            <div class="step"><div class="step-dot course">1</div><div class="step-info"><div class="step-title">Browse & filter courses</div><div class="step-path"><span class="step-method m-get">GET</span>/api/Course/all?SearchTerm&Platform&Level</div></div></div>
+            <div class="step"><div class="step-dot course">2</div><div class="step-info"><div class="step-title">Get course details</div><div class="step-path"><span class="step-method m-get">GET</span>/api/Course/{id}</div></div></div>
+            <div class="step"><div class="step-dot course">3</div><div class="step-info"><div class="step-title">Save or enroll</div><div class="step-path"><span class="step-method m-post">POST</span>/api/SavedCourse &nbsp;|&nbsp; /api/CourseProgress/enroll</div></div></div>
+            <div class="step"><div class="step-dot course">4</div><div class="step-info"><div class="step-title">Track progress</div><div class="step-path"><span class="step-method m-put">PUT</span>/api/CourseProgress/UpdateProgress/{id}</div></div></div>
+            <div class="step"><div class="step-dot course">5</div><div class="step-info"><div class="step-title">Get AI recommendations</div><div class="step-path"><span class="step-method m-get">GET</span>/api/CourseRecommendation/my-recommendations</div></div></div>
+          </div>
+        </div>
+
+        <!-- Job Application Flow -->
+        <div class="flow-card">
+          <div class="flow-name">Job Application Flow</div>
+          <div class="flow-steps">
+            <div class="step"><div class="step-dot job">1</div><div class="step-info"><div class="step-title">Search & filter jobs</div><div class="step-path"><span class="step-method m-get">GET</span>/api/jobs?SearchTerm&Location&JobType</div></div></div>
+            <div class="step"><div class="step-dot job">2</div><div class="step-info"><div class="step-title">View recommended jobs</div><div class="step-path"><span class="step-method m-get">GET</span>/api/jobs/recommended</div></div></div>
+            <div class="step"><div class="step-dot job">3</div><div class="step-info"><div class="step-title">Save job for later</div><div class="step-path"><span class="step-method m-post">POST</span>/api/saved-jobs</div></div></div>
+            <div class="step"><div class="step-dot job">4</div><div class="step-info"><div class="step-title">Apply to job</div><div class="step-path"><span class="step-method m-post">POST</span>/api/job-applications {jobId, notes}</div></div></div>
+            <div class="step"><div class="step-dot job">5</div><div class="step-info"><div class="step-title">Track application status</div><div class="step-path"><span class="step-method m-put">PUT</span>/api/job-applications/{id} {status}</div></div></div>
+          </div>
+        </div>
+
+        <!-- Profile & Career Flow -->
+        <div class="flow-card">
+          <div class="flow-name">Career Guidance Flow</div>
+          <div class="flow-steps">
+            <div class="step"><div class="step-dot profile">1</div><div class="step-info"><div class="step-title">Complete career questionnaire</div><div class="step-path"><span class="step-method m-post">POST</span>/api/Questionnaire/career-match/submit</div></div></div>
+            <div class="step"><div class="step-dot profile">2</div><div class="step-info"><div class="step-title">Upload CV for analysis</div><div class="step-path"><span class="step-method m-post">POST</span>/api/Cv/upload</div></div></div>
+            <div class="step"><div class="step-dot profile">3</div><div class="step-info"><div class="step-title">Get AI career roadmap</div><div class="step-path"><span class="step-method m-post">POST</span>/api/Chatbot/career-roadmap {targetJobTitle}</div></div></div>
+            <div class="step"><div class="step-dot profile">4</div><div class="step-info"><div class="step-title">Enroll in career path</div><div class="step-path"><span class="step-method m-post">POST</span>/api/UserCareerPath/enroll</div></div></div>
+            <div class="step"><div class="step-dot profile">5</div><div class="step-info"><div class="step-title">Build AI-generated resume PDF</div><div class="step-path"><span class="step-method m-post">POST</span>/api/ResumeBuilder/generate-pdf</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- ENDPOINTS -->
+  <section id="endpoints">
+    <div class="section-header">
+      <div>
+        <div class="section-title">All Endpoints</div>
+        <div class="section-sub">Click any module to expand endpoints</div>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <button class="filter-btn active" onclick="filterModules('all',this)">All</button>
+      <button class="filter-btn" onclick="filterModules('auth',this)">Auth</button>
+      <button class="filter-btn" onclick="filterModules('career',this)">Career Paths</button>
+      <button class="filter-btn" onclick="filterModules('courses',this)">Courses</button>
+      <button class="filter-btn" onclick="filterModules('jobs',this)">Jobs</button>
+      <button class="filter-btn" onclick="filterModules('profile',this)">Profile & CV</button>
+      <button class="filter-btn" onclick="filterModules('ai',this)">AI Tools</button>
+      <button class="filter-btn" onclick="filterModules('platform',this)">Platform</button>
+    </div>
+
+    <div id="module-list"></div>
+  </section>
+
+</main>
+</div>
+
+<script>
+const MODULES = [
+  { name:'Auth', cat:'auth', icon:'ti-lock', endpoints:[
+    {m:'POST',p:'/api/Auth/Register',d:'Register new user',info:'firstName, lastName, username, email, password, confirmPassword'},
+    {m:'POST',p:'/api/Auth/Confirm-Email',d:'Verify email OTP',info:'email, otp'},
+    {m:'POST',p:'/api/Auth/Login',d:'Email & password login',info:'email, password'},
+    {m:'POST',p:'/api/Auth/Google-login',d:'Google OAuth login',info:'idToken'},
+    {m:'POST',p:'/api/Auth/Forgot-Password',d:'Request password reset OTP',info:'email'},
+    {m:'POST',p:'/api/Auth/Reset-Password',d:'Reset password with OTP',info:'email, otp, newPassword, confirmNewPassword'},
+    {m:'POST',p:'/api/Auth/resend-otp',d:'Resend verification OTP',info:'email'},
+    {m:'POST',p:'/api/Auth/logout',d:'Logout / invalidate session',info:'—'},
+  ]},
+  { name:'Career Path', cat:'career', icon:'ti-road', endpoints:[
+    {m:'GET',p:'/api/CareerPath',d:'List all career paths',info:'—'},
+    {m:'GET',p:'/api/CareerPath/search',d:'Search by name',info:'?name='},
+    {m:'GET',p:'/api/CareerPath/{id}',d:'Get career path by ID',info:'path: id'},
+    {m:'POST',p:'/api/CareerPath/add new careerPath',d:'Create career path (admin)',info:'careerPathName, description, difficultyLevel, durationInMonths, categoryId'},
+    {m:'PUT',p:'/api/CareerPath/updatecareerPath/{id}',d:'Update career path (admin)',info:'path: id — partial update fields'},
+    {m:'DELETE',p:'/api/CareerPath/deletecareerPath/{id}',d:'Delete career path (admin)',info:'path: id'},
+  ]},
+  { name:'Career Path Course', cat:'career', icon:'ti-arrows-join', endpoints:[
+    {m:'POST',p:'/api/CareerPathCourse',d:'Link a course to a career path',info:'careerPathId, courseId, orderNumber, isRequired, completionCriteria'},
+    {m:'GET',p:'/api/CareerPathCourse/career-path/{careerPathId}',d:'Get courses for a career path',info:'path: careerPathId'},
+    {m:'DELETE',p:'/api/CareerPathCourse/{id}',d:'Remove course from career path',info:'path: id'},
+  ]},
+  { name:'User Career Path', cat:'career', icon:'ti-user-check', endpoints:[
+    {m:'GET',p:'/api/UserCareerPath/my-career-paths',d:'List my enrolled career paths',info:'—'},
+    {m:'GET',p:'/api/UserCareerPath/GetCareerPaths',d:'Filter by status',info:'?careerPathStatus=NotStarted|InProgress|Completed|Cancelled'},
+    {m:'GET',p:'/api/UserCareerPath/{userCareerPathId}',d:'Get my enrollment details',info:'path: userCareerPathId'},
+    {m:'POST',p:'/api/UserCareerPath/enroll',d:'Enroll in a career path',info:'careerPathId, careerPathStatus'},
+    {m:'DELETE',p:'/api/UserCareerPath/unenroll/{userCareerPathId}',d:'Unenroll from career path',info:'path: userCareerPathId'},
+    {m:'GET',p:'/api/UserCareerPath/is-enrolled/{careerPathId}',d:'Check enrollment status',info:'path: careerPathId'},
+    {m:'GET',p:'/api/UserCareerPath/recommended',d:'Get AI-recommended career paths',info:'—'},
+  ]},
+  { name:'Questionnaire', cat:'career', icon:'ti-help-circle', endpoints:[
+    {m:'GET',p:'/api/Questionnaire/career-match',d:'Get career assessment questions',info:'—'},
+    {m:'POST',p:'/api/Questionnaire/career-match/submit',d:'Submit career assessment answers',info:'questionnaireId, answers[{questionId, answer}]'},
+  ]},
+  { name:'Course', cat:'courses', icon:'ti-books', endpoints:[
+    {m:'GET',p:'/api/Course/all',d:'List all courses with filters',info:'?SearchTerm&PlatformId&IsFreeOnly&DifficultyLevel&CategoryId&SubCategoryId'},
+    {m:'GET',p:'/api/Course/search',d:'Quick search by name',info:'?name='},
+    {m:'GET',p:'/api/Course/{id}',d:'Get course details',info:'path: id'},
+    {m:'POST',p:'/api/Course/add',d:'Add a course (admin)',info:'multipart: Name, Description, Instructor, ExternalUrl, Price, DurationHours, TotalLessons, DifficultyLevel, Rating, CategoryId, PlatformId, ThumbnailFile'},
+    {m:'PUT',p:'/api/Course/update/{id}',d:'Update course (admin)',info:'multipart: partial update fields'},
+    {m:'DELETE',p:'/api/Course/delete/{id}',d:'Delete course (admin)',info:'path: id'},
+  ]},
+  { name:'Course Category', cat:'courses', icon:'ti-category', endpoints:[
+    {m:'GET',p:'/api/CourseCategory/all',d:'List all categories',info:'—'},
+    {m:'GET',p:'/api/CourseCategory/{categoryId}/subcategories',d:'Get subcategories',info:'path: categoryId'},
+    {m:'POST',p:'/api/CourseCategory/category/add',d:'Add category',info:'name'},
+    {m:'PUT',p:'/api/CourseCategory/category/update/{id}',d:'Update category',info:'path: id — name'},
+    {m:'DELETE',p:'/api/CourseCategory/category/delete/{id}',d:'Delete category',info:'path: id'},
+    {m:'POST',p:'/api/CourseCategory/subcategory/add',d:'Add subcategory',info:'name, categoryId'},
+    {m:'PUT',p:'/api/CourseCategory/subcategory/update/{id}',d:'Update subcategory',info:'path: id — name, categoryId'},
+    {m:'DELETE',p:'/api/CourseCategory/subcategory/delete/{id}',d:'Delete subcategory',info:'path: id'},
+    {m:'POST',p:'/api/CourseCategory/import-json',d:'Bulk import categories from JSON',info:'multipart: file (binary)'},
+  ]},
+  { name:'Course Platform', cat:'courses', icon:'ti-world', endpoints:[
+    {m:'GET',p:'/api/CoursePlatform/Get-All-Platforms',d:'List platforms',info:'?onlyActive=true'},
+    {m:'GET',p:'/api/CoursePlatform/{id}',d:'Get platform by ID',info:'path: id'},
+    {m:'POST',p:'/api/CoursePlatform/add',d:'Add platform (admin)',info:'name, description, baseUrl, logoUrl, apiEndPoint, isActive'},
+    {m:'PUT',p:'/api/CoursePlatform/update/{id}',d:'Update platform (admin)',info:'multipart: Name, BaseUrl, LogoUrl, ApiEndPoint, IsActive'},
+    {m:'DELETE',p:'/api/CoursePlatform/delete/{id}',d:'Delete platform (admin)',info:'path: id'},
+  ]},
+  { name:'Course Progress', cat:'courses', icon:'ti-chart-line', endpoints:[
+    {m:'GET',p:'/api/CourseProgress/my-progress',d:'Get all my enrollments & progress',info:'—'},
+    {m:'POST',p:'/api/CourseProgress/enroll',d:'Enroll in a course',info:'courseId'},
+    {m:'PUT',p:'/api/CourseProgress/UpdateProgress/{progressId}',d:'Update completed lessons',info:'path: progressId — completedLessons, notes'},
+    {m:'DELETE',p:'/api/CourseProgress/drop/{progressId}',d:'Drop a course enrollment',info:'path: progressId'},
+  ]},
+  { name:'Course Recommendation', cat:'courses', icon:'ti-sparkles', endpoints:[
+    {m:'GET',p:'/api/CourseRecommendation/my-recommendations',d:'Get AI course recommendations',info:'?targetJobTitle='},
+  ]},
+  { name:'Saved Course', cat:'courses', icon:'ti-bookmark', endpoints:[
+    {m:'POST',p:'/api/SavedCourse',d:'Save a course',info:'courseId, notes'},
+    {m:'GET',p:'/api/SavedCourse',d:'List my saved courses',info:'—'},
+    {m:'DELETE',p:'/api/SavedCourse/{id}',d:'Remove saved course',info:'path: id'},
+    {m:'GET',p:'/api/SavedCourse/{courseId}/check',d:'Check if course is saved',info:'path: courseId'},
+  ]},
+  { name:'Job', cat:'jobs', icon:'ti-briefcase', endpoints:[
+    {m:'GET',p:'/api/jobs',d:'List jobs with filters',info:'?SearchTerm&Location&JobType&ExperienceLevel&SourceId&MinSalary&IsActive'},
+    {m:'POST',p:'/api/jobs',d:'Create job listing (admin)',info:'jobTitle, sourceId, companyName, description, location, jobType, experienceLevel, salaryMin, salaryMax, externalUrl, expiryDate'},
+    {m:'GET',p:'/api/jobs/{id}',d:'Get job details',info:'path: id'},
+    {m:'PUT',p:'/api/jobs/{id}',d:'Update job listing (admin)',info:'path: id — partial update'},
+    {m:'DELETE',p:'/api/jobs/{id}',d:'Delete job listing',info:'path: id'},
+    {m:'GET',p:'/api/jobs/search',d:'Quick search jobs by name',info:'?name='},
+    {m:'GET',p:'/api/jobs/recommended',d:'Get AI-recommended jobs for user',info:'—'},
+  ]},
+  { name:'Job Application', cat:'jobs', icon:'ti-file-cv', endpoints:[
+    {m:'POST',p:'/api/job-applications',d:'Apply to a job',info:'jobId, notes'},
+    {m:'GET',p:'/api/job-applications',d:'List my applications',info:'—'},
+    {m:'PUT',p:'/api/job-applications/{id}',d:'Update application status',info:'path: id — status, notes'},
+    {m:'DELETE',p:'/api/job-applications/{id}',d:'Withdraw application',info:'path: id'},
+  ]},
+  { name:'Job Source', cat:'jobs', icon:'ti-database', endpoints:[
+    {m:'GET',p:'/api/job-sources',d:'List job sources',info:'?onlyActive=true'},
+    {m:'POST',p:'/api/job-sources',d:'Add job source (admin)',info:'sourceName, sourceType, apiEndpoint, isActive'},
+    {m:'GET',p:'/api/job-sources/{id}',d:'Get source by ID',info:'path: id'},
+    {m:'PUT',p:'/api/job-sources/{id}',d:'Update job source (admin)',info:'path: id — partial update'},
+    {m:'DELETE',p:'/api/job-sources/{id}',d:'Delete job source',info:'path: id'},
+  ]},
+  { name:'Saved Job', cat:'jobs', icon:'ti-heart', endpoints:[
+    {m:'POST',p:'/api/saved-jobs',d:'Save a job',info:'jobId, notes'},
+    {m:'GET',p:'/api/saved-jobs',d:'List my saved jobs',info:'—'},
+    {m:'DELETE',p:'/api/saved-jobs/{id}',d:'Remove saved job',info:'path: id'},
+    {m:'GET',p:'/api/saved-jobs/{jobId}/check',d:'Check if job is saved',info:'path: jobId'},
+  ]},
+  { name:'User Profile', cat:'profile', icon:'ti-user-circle', endpoints:[
+    {m:'GET',p:'/api/UserProfile/my-profile',d:'Get authenticated user profile',info:'—'},
+    {m:'PUT',p:'/api/UserProfile/update',d:'Update profile info & avatar',info:'multipart: UserName, FirstName, LastName, PhoneNumber, Bio, Location, DateOfBirth, ProfilePictureUrl'},
+  ]},
+  { name:'User Experience', cat:'profile', icon:'ti-building-skyscraper', endpoints:[
+    {m:'GET',p:'/api/UserExperience/my-experiences',d:'Get my work experiences',info:'—'},
+    {m:'POST',p:'/api/UserExperience/add-experience',d:'Add work experience',info:'companyName, position, description, startDate, endDate, isCurrent, employmentType'},
+    {m:'PUT',p:'/api/UserExperience/update/{experienceId}',d:'Update experience',info:'path: experienceId — partial update'},
+    {m:'DELETE',p:'/api/UserExperience/delete/{experienceId}',d:'Delete experience',info:'path: experienceId'},
+  ]},
+  { name:'Education', cat:'profile', icon:'ti-school', endpoints:[
+    {m:'GET',p:'/api/Education/my-education',d:'Get my education history',info:'—'},
+    {m:'POST',p:'/api/Education/add',d:'Add education entry',info:'multipart: Institution, Degree, FieldOfStudy, StartDate, EndDate, Certificates[]'},
+    {m:'PUT',p:'/api/Education/update/{educationId}',d:'Update education entry',info:'path: educationId — partial update'},
+    {m:'DELETE',p:'/api/Education/delete/{educationId}',d:'Delete education entry',info:'path: educationId'},
+    {m:'POST',p:'/api/Education/{educationId}/upload-certificates',d:'Upload certificate files',info:'path: educationId — multipart: files[]'},
+    {m:'DELETE',p:'/api/Education/{educationId}/delete-specific-certificate',d:'Delete a certificate',info:'path: educationId — ?certificateUrl='},
+  ]},
+  { name:'Skill', cat:'profile', icon:'ti-tool', endpoints:[
+    {m:'GET',p:'/api/Skill/global-skills',d:'Browse global skill library',info:'—'},
+    {m:'POST',p:'/api/Skill/create-global-skill',d:'Add skill to library (admin)',info:'skillName, category, description, isTechnical'},
+    {m:'GET',p:'/api/Skill/my-skills',d:'Get my skills',info:'—'},
+    {m:'POST',p:'/api/Skill/add-my-skill',d:'Add skill to my profile',info:'skillId, proficiencyLevel, source'},
+    {m:'DELETE',p:'/api/Skill/remove-my-skill/{userSkillId}',d:'Remove skill from profile',info:'path: userSkillId'},
+  ]},
+  { name:'CV', cat:'profile', icon:'ti-file-text', endpoints:[
+    {m:'POST',p:'/api/Cv/upload',d:'Upload a CV (PDF)',info:'multipart: File (binary), IsPrimary'},
+    {m:'GET',p:'/api/Cv/my-cvs',d:'List my uploaded CVs',info:'—'},
+    {m:'PUT',p:'/api/Cv/{cvId}/set-primary',d:'Set CV as primary',info:'path: cvId'},
+    {m:'DELETE',p:'/api/Cv/{cvId}',d:'Delete a CV',info:'path: cvId'},
+    {m:'POST',p:'/api/Cv/compare',d:'AI comparison of multiple CVs',info:'cvIds[] (2–5 IDs)'},
+  ]},
+  { name:'Resume Builder', cat:'profile', icon:'ti-file-download', endpoints:[
+    {m:'POST',p:'/api/ResumeBuilder/generate-pdf',d:'Generate AI-crafted resume PDF',info:'targetJobTitle, style, language, additionalNotes'},
+  ]},
+  { name:'Chatbot', cat:'ai', icon:'ti-robot', endpoints:[
+    {m:'POST',p:'/api/Chatbot/ask',d:'Send message to AI assistant',info:'multipart: Message (max 5000 chars), Attachment (binary), HistoryFile (binary)'},
+    {m:'POST',p:'/api/Chatbot/career-roadmap',d:'Generate career roadmap for job title',info:'targetJobTitle'},
+    {m:'POST',p:'/api/Chatbot/interview-prep',d:'Get interview prep questions',info:'jobTitle, difficulty'},
+  ]},
+  { name:'Dashboard', cat:'platform', icon:'ti-layout-dashboard', endpoints:[
+    {m:'GET',p:'/api/Dashboard',d:'Get dashboard summary data',info:'—'},
+  ]},
+  { name:'Notification', cat:'platform', icon:'ti-bell', endpoints:[
+    {m:'GET',p:'/api/notifications',d:'List notifications',info:'?unreadOnly=false&take=50'},
+    {m:'POST',p:'/api/notifications',d:'Create notification (admin/system)',info:'userId, notificationType, title, message, relatedEntityType, relatedEntityId'},
+    {m:'GET',p:'/api/notifications/unread-count',d:'Get unread notification count',info:'—'},
+    {m:'POST',p:'/api/notifications/{id}/read',d:'Mark notification as read',info:'path: id'},
+    {m:'POST',p:'/api/notifications/read-all',d:'Mark all notifications as read',info:'—'},
+  ]},
+  { name:'Recent Search', cat:'platform', icon:'ti-history', endpoints:[
+    {m:'GET',p:'/api/RecentSearch/courses',d:'Get recent course searches',info:'—'},
+    {m:'DELETE',p:'/api/RecentSearch/courses',d:'Clear course search history',info:'—'},
+    {m:'GET',p:'/api/RecentSearch/jobs',d:'Get recent job searches',info:'—'},
+    {m:'DELETE',p:'/api/RecentSearch/jobs',d:'Clear job search history',info:'—'},
+    {m:'GET',p:'/api/RecentSearch/careerpaths',d:'Get recent career path searches',info:'—'},
+    {m:'DELETE',p:'/api/RecentSearch/careerpaths',d:'Clear career path history',info:'—'},
+    {m:'DELETE',p:'/api/RecentSearch/{id}',d:'Delete specific search record',info:'path: id'},
+  ]},
+];
+
+const METHOD_CLASS = {GET:'m-get',POST:'m-post',PUT:'m-put',DELETE:'m-del'};
+
+function badge(m){return`<span class="ep-badge ${METHOD_CLASS[m]||'m-get'}">${m}</span>`;}
+
+let activeFilter='all';
+
+function renderModules(filter){
+  const list=document.getElementById('module-list');
+  const filtered=filter==='all'?MODULES:MODULES.filter(m=>m.cat===filter);
+  list.innerHTML=filtered.map((mod,i)=>`
+    <div class="module-card" id="mc-${i}" data-cat="${mod.cat}">
+      <div class="module-header" onclick="toggle(${i})">
+        <div class="module-dot dot-${mod.cat}"></div>
+        <i class="ti ${mod.icon}" style="color:var(--muted);font-size:16px"></i>
+        <span class="module-name">${mod.name}</span>
+        <span class="module-tag cat-${mod.cat}">${mod.cat}</span>
+        <span class="module-ep-count">${mod.endpoints.length} endpoints</span>
+        <i class="ti ti-chevron-down module-toggle"></i>
+      </div>
+      <div class="ep-table">
+        ${mod.endpoints.map(ep=>`
+        <div class="ep-row">
+          <div>${badge(ep.m)}</div>
+          <div>
+            <div class="ep-path">${ep.p}</div>
+            <div class="ep-params">${ep.info}</div>
+          </div>
+          <div class="ep-desc">${ep.d}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggle(i){
+  const card=document.getElementById('mc-'+i);
+  card.classList.toggle('open');
+}
+
+function filterModules(cat,btn){
+  activeFilter=cat;
+  renderModules(cat);
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.sidebar-item').forEach(b=>b.classList.remove('active'));
+  if(btn){btn.classList.add('active');}
+}
+
+function updateCounts(){
+  const cats=['auth','career','courses','jobs','profile','ai','platform'];
+  cats.forEach(c=>{
+    const el=document.getElementById('cnt-'+c);
+    if(el) el.textContent=MODULES.filter(m=>m.cat===c).length;
+  });
+  const all=document.getElementById('cnt-all');
+  if(all) all.textContent=MODULES.length;
+}
+
+updateCounts();
+renderModules('all');
+
+// expand all by default for a better first impression
+setTimeout(()=>{
+  document.querySelectorAll('.module-card').forEach((c,i)=>{if(i<3)c.classList.add('open');});
+},100);
+</script>
+</body>
+</html>

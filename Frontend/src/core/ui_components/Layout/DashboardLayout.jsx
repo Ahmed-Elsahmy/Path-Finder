@@ -40,13 +40,14 @@ const IconUser = () => (
 );
 
 const NAV_ITEMS = [
-  { name: "Dashboard",    path: "/dashboard",    Icon: IconHome },
-  { name: "Career Match", path: "/career-match", Icon: IconMatch },
-  { name: "Courses",      path: "/courses",      Icon: IconBook },
-  { name: "Jobs",         path: "/jobs",         Icon: IconBriefcase },
-  { name: "AI Assistant", path: "/ai-assistant", Icon: IconAI },
-  { name: "CV Manager",   path: "/cv-manager",   Icon: IconCV },
-  { name: "Profile",      path: "/profile",      Icon: IconUser },
+  { name: "Dashboard",      path: "/dashboard",      Icon: IconHome },
+  { name: "Career Path",    path: "/career-paths",   Icon: IconMatch },
+  { name: "Courses",        path: "/courses",        Icon: IconBook },
+  { name: "Jobs",           path: "/jobs",           Icon: IconBriefcase },
+  { name: "AI Assistant",   path: "/ai-assistant",   Icon: IconAI },
+  { name: "CV Manager",     path: "/cv-manager",     Icon: IconCV },
+  { name: "Resume Builder", path: "/resume-builder", Icon: IconUser },
+  { name: "Profile",        path: "/profile",        Icon: IconUser },
 ];
 
 const DashboardLayout = ({ children }) => {
@@ -117,7 +118,7 @@ const DashboardLayout = ({ children }) => {
 
         {/* Desktop nav */}
         <nav className="hidden lg:flex items-center gap-0.5 ml-4">
-          {NAV_ITEMS.map(({ name, path, Icon }) => (
+          {NAV_ITEMS.filter(n => n.name !== "Profile").map(({ name, path, Icon }) => (
             <Link key={path} to={path}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium transition-all ${
                 isActive(path)
@@ -131,24 +132,42 @@ const DashboardLayout = ({ children }) => {
           ))}
         </nav>
 
-        {/* Profile */}
-        <div className="ml-auto relative" ref={profileRef}>
-          <button
-            id="profile-btn"
-            onClick={() => setProfileOpen((v) => !v)}
-            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 transition-colors"
-          >
-            <div className="hidden sm:block text-right">
-              <p className="text-[13px] font-semibold text-slate-800 leading-none">{name}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">Member</p>
-            </div>
-            <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center text-xs font-bold overflow-hidden">
-              {pic ? <img src={pic} alt={name} className="w-full h-full object-cover"/> : initials}
-            </div>
-            <svg className={`w-3.5 h-3.5 text-slate-400 transition-transform ${profileOpen?"rotate-180":""}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/>
+        {/* Right Actions */}
+        <div className="ml-auto flex items-center gap-2 relative">
+          
+          <Link to="/saved-items" className="hidden sm:flex items-center justify-center w-9 h-9 rounded-full text-slate-400 hover:bg-slate-50 hover:text-blue-600 transition-colors">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
             </svg>
-          </button>
+          </Link>
+
+          <Link to="/notifications" className="hidden sm:flex items-center justify-center w-9 h-9 rounded-full text-slate-400 hover:bg-slate-50 hover:text-blue-600 transition-colors relative">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+            </svg>
+            <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-red-500 rounded-full border border-white"></span>
+          </Link>
+
+          <div className="w-px h-6 bg-slate-200 mx-2 hidden sm:block"></div>
+
+          {/* Profile */}
+          <div className="relative" ref={profileRef}>
+            <button
+              id="profile-btn"
+              onClick={() => setProfileOpen((v) => !v)}
+              className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 transition-colors"
+            >
+              <div className="hidden sm:block text-right">
+                <p className="text-[13px] font-semibold text-slate-800 leading-none">{name}</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Member</p>
+              </div>
+              <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center text-xs font-bold overflow-hidden">
+                {pic ? <img src={pic} alt={name} className="w-full h-full object-cover"/> : initials}
+              </div>
+              <svg className={`w-3.5 h-3.5 text-slate-400 transition-transform ${profileOpen?"rotate-180":""}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
 
           {profileOpen && (
             <div className="absolute right-0 top-full mt-1.5 w-52 bg-white rounded-xl shadow-lg border border-slate-200 py-1 animate-scale-in z-50">
@@ -173,7 +192,8 @@ const DashboardLayout = ({ children }) => {
             </div>
           )}
         </div>
-      </header>
+      </div>
+    </header>
 
       {/* Mobile Drawer */}
       {mobileOpen && (

@@ -1,11 +1,11 @@
 import axios from "axios";
 
-// Always use the production API
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "https://pathfinder.tryasp.net/api";
+const defaultApiBaseUrl = import.meta.env.DEV
+  ? "https://localhost:44330/api"
+  : "https://pathfinder.tryasp.net/api";
 
 export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: import.meta.env.VITE_API_BASE_URL || defaultApiBaseUrl,
   timeout: 30000,
   headers: {
     "Content-Type": "application/json",
@@ -30,11 +30,9 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      const hasToken = localStorage.getItem("token");
-      if (hasToken) {
-        localStorage.clear();
-        window.location.href = "/login";
-      }
+      // Token expired — clear storage and redirect
+      localStorage.clear();
+      window.location.href = "/login";
     }
     return Promise.reject(error);
   },

@@ -14,11 +14,16 @@ import SetNewPasswordScreen from "../features/auth/presentation/screens/SetNewPa
 // --- المسارات المحمية (Private Screens) ---
 import DashboardScreen from "../features/dashboard/presentation/screens/DashboardScreen.jsx"; // 👈 استيراد الصفحة العصرية الجديدة
 import CoursesScreen from "../features/courses/presentation/screens/CoursesScreen.jsx";
+import CourseDetailsScreen from "../features/courses/presentation/screens/CourseDetailsScreen.jsx";
 import JobsScreen from "../features/jobs/presentation/screens/JobsScreen.jsx";
 import ProfileScreen from "../features/profile/presentation/screens/ProfileScreen.jsx";
 import CvManagerScreen from "../features/cv/presentation/screens/CvManagerScreen.jsx";
 import ChatbotScreen from "../features/chatbot/presentation/screens/ChatbotScreen.jsx";
+import CareerPathsScreen from "../features/careerMatch/presentation/screens/CareerPathsScreen.jsx";
 import CareerMatchScreen from "../features/careerMatch/presentation/screens/CareerMatchScreen.jsx";
+import ResumeBuilderScreen from "../features/cv/presentation/screens/ResumeBuilderScreen.jsx";
+import SavedItemsScreen from "../features/dashboard/presentation/screens/SavedItemsScreen.jsx";
+import NotificationsScreen from "../features/dashboard/presentation/screens/NotificationsScreen.jsx";
 
 // ----------------------------------------------------
 // Middleware: مكون حماية المسارات (يمنع الدخول بدون Token)
@@ -108,6 +113,16 @@ const AppRoutes = () => {
       />
 
       <Route
+        path="/career-paths"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <CareerPathsScreen />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/career-match"
         element={
           <ProtectedRoute>
@@ -124,6 +139,16 @@ const AppRoutes = () => {
           <ProtectedRoute>
             <DashboardLayout>
               <CoursesScreen />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/courses/:id"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <CourseDetailsScreen />
             </DashboardLayout>
           </ProtectedRoute>
         }
@@ -164,6 +189,38 @@ const AppRoutes = () => {
           <ProtectedRoute>
             <DashboardLayout>
               <ChatbotScreen />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      
+      {/* New Pages */}
+      <Route
+        path="/resume-builder"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <ResumeBuilderScreen />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/saved-items"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <SavedItemsScreen />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/notifications"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <NotificationsScreen />
             </DashboardLayout>
           </ProtectedRoute>
         }
