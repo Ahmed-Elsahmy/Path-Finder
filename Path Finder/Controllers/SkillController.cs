@@ -48,8 +48,6 @@ namespace Path_Finder.Controllers
 
             return Ok(new { Message = result.Data });
         }
-
-        [Authorize(Roles = "User,Admin")]
         [HttpGet("my-skills")]
         public async Task<IActionResult> GetMySkills()
         {
