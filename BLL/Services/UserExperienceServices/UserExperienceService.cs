@@ -153,25 +153,56 @@ namespace BLL.Services.UserExperienceServices
                     .Failure("An error occurred while updating the experience.");
             }
         }
-        public async Task<ServiceResult<string>> DeleteExperienceAsync(string userId, int experienceId)
+        public async Task<ServiceResult<string>> DeleteExperienceAsync(
+            string userId,
+            int experienceId)
         {
-         
             try
             {
                 var experience = await _experienceRepository
-                    .FirstOrDefaultAsync(e => e.ExperienceId == experienceId && e.UserId == userId);
+                    .FirstOrDefaultAsync(e =>
+                        e.ExperienceId == experienceId &&
+                        e.UserId == userId);
+
                 if (experience == null)
                 {
-                    return ServiceResult<string>.Failure("Experience not found or does not belong to you.");
+                    return ServiceResult<string>
+                        .Failure("Experience not found or does not belong to you.");
                 }
-                 _experienceRepository.Remove(experience);
+
+                bool wasCurrent = experience.IsCurrent;
+
+                _experienceRepository.Remove(experience);
+
+                // if deleted experience was current
+                // make latest experience current automatically
+                if (wasCurrent)
+                {
+                    var latestExperience = (await _experienceRepository
+                        .FindAsync(e =>
+                            e.UserId == userId &&
+                            e.ExperienceId != experienceId))
+                        .OrderByDescending(e => e.StartDate)
+                        .FirstOrDefault();
+
+                    if (latestExperience != null)
+                    {
+                        latestExperience.IsCurrent = true;
+                        latestExperience.EndDate = null;
+                    }
+                }
+
                 await _experienceRepository.SaveChangesAsync();
 
-                return ServiceResult<string>.Success("Experience deleted successfully.");
+                return ServiceResult<string>
+                    .Success("Experience deleted successfully.");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting experience {ExperienceId} for user {UserId}", experienceId, userId);
+                _logger.LogError(ex,
+                    "Error deleting experience {ExperienceId} for user {UserId}",
+                    experienceId,
+                    userId);
 
                 return ServiceResult<string>
                     .Failure("An error occurred while deleting the experience.");

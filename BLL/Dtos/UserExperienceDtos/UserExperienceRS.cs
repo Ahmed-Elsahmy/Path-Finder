@@ -10,6 +10,7 @@ namespace BLL.Dtos.UserExperienceDtos
 {
     public class UserExperienceRS
     {
+        public int ExperienceId { get; set; }
         public string CompanyName { get; set; }
         public string Position { get; set; }
         public string? Description { get; set; }
