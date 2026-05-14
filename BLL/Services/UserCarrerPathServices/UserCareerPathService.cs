@@ -17,6 +17,8 @@ namespace BLL.Services.UserCarrerPathServices
     {
         private readonly IRepository<UserCareerPath> _userCareerPathRepository;
         private readonly IRepository<CareerPath> _careerPathRepository;
+        private readonly IRepository<CourseProgress> _courseProgressRepository;
+        private readonly IRepository<Course> _courseRepository;
         private readonly IWebHostEnvironment _env;
         private readonly IRepository<UserSkill> _userSkillRepository;
         private readonly IRepository<UserEducation> _educationRepository;
@@ -36,6 +38,8 @@ namespace BLL.Services.UserCarrerPathServices
             IRepository<UserSkill> userSkillRepository,
             IRepository<UserEducation> educationRepository,
             IRepository<UserExperience> experienceRepository,
+            IRepository<CourseProgress> courseProgressRepository,
+            IRepository<Course> courseRepository,
             IRepository<CV> cvRepo,
             IWebHostEnvironment env,
             IConfiguration config,
@@ -54,6 +58,8 @@ namespace BLL.Services.UserCarrerPathServices
             _mapper = mapper;
             _logger = logger;
             _cvRepo=cvRepo;
+            _courseProgressRepository=courseProgressRepository;
+            _courseRepository=courseRepository;
         }
         public async Task<ServiceResult<UserCareerPathRS>> EnrollInCareerPathAsync(string userId, UserCareerPathRQ request)
         {
@@ -63,18 +69,29 @@ namespace BLL.Services.UserCarrerPathServices
                 return ServiceResult<UserCareerPathRS>.Failure("Invalid career path request.", ServiceErrorCode.ValidationError);
             try
             {
-                var careerPath = await _careerPathRepository
-                    .FirstOrDefaultAsync(cp => cp.CareerPathId == request.CareerPathId);
+                var careerPath = await _careerPathRepository.Query()
+                    .Include(cp => cp.CareerPathCourses)
+                    .ThenInclude(cpc => cpc.Course)
+                    .FirstOrDefaultAsync(cp =>
+                        cp.CareerPathId == request.CareerPathId);
 
                 if (careerPath == null)
-                    return ServiceResult<UserCareerPathRS>.Failure("Career path not found.", ServiceErrorCode.NotFound);
+                {
+                    return ServiceResult<UserCareerPathRS>.Failure(
+                        "Career path not found.",
+                        ServiceErrorCode.NotFound);
+                }
 
                 var alreadyEnrolled = await _userCareerPathRepository.AnyAsync(x =>
-                    x.UserId == userId &&
-                    x.CareerPathId == request.CareerPathId &&
-                    x.Status != CareerPathStatus.Cancelled);
+                     x.UserId == userId &&
+                     x.CareerPathId == request.CareerPathId &&
+                     x.Status != CareerPathStatus.Cancelled);
                 if (alreadyEnrolled)
-                    return ServiceResult<UserCareerPathRS>.Failure("You are already enrolled in this career path.", ServiceErrorCode.ValidationError);
+                {
+                    return ServiceResult<UserCareerPathRS>.Failure(
+                        "You are already enrolled in this career path.",
+                        ServiceErrorCode.ValidationError);
+                }
 
                 var recommendationReason = await GenerateAiRecommendationReasonAsync(userId, careerPath);
 
@@ -92,6 +109,42 @@ namespace BLL.Services.UserCarrerPathServices
 
                 await _userCareerPathRepository.AddAsync(userCareerPath);
                 await _userCareerPathRepository.SaveChangesAsync();
+                // =========================
+                // AUTO ENROLL IN COURSES
+                // =========================
+
+                if (careerPath.CareerPathCourses != null &&
+                    careerPath.CareerPathCourses.Any())
+                {
+                    var userCourses = new List<CourseProgress>();
+
+                    foreach (var item in careerPath.CareerPathCourses)
+                    {
+                        var alreadyEnrolledInCourse =
+                            await _courseProgressRepository.AnyAsync(x =>
+                                x.UserId == userId &&
+                                x.CourseId == item.CourseId &&
+                                x.Status != "Cancelled");
+
+                        if (!alreadyEnrolledInCourse)
+                        {
+                            userCourses.Add(new CourseProgress
+                            {
+                                UserId = userId,
+                                CourseId = item.CourseId,
+                                StartedAt = DateTime.UtcNow,
+                                ProgressPercentage = 0,
+                                Status = "NotStarted"
+                            });
+                        }
+                    }
+
+                    if (userCourses.Any())
+                    {
+                        await _courseProgressRepository.AddRangeAsync(userCourses);
+                        await _courseProgressRepository.SaveChangesAsync();
+                    }
+                }
 
                 return ServiceResult<UserCareerPathRS>.Success(_mapper.Map<UserCareerPathRS>(userCareerPath));
             }
@@ -295,28 +348,78 @@ Career Path:
                 return null;
             }
         }
-        public async Task<ServiceResult<string>> UnenrollFromCareerPathAsync(string userId, int userCareerPathId)
+        public async Task<ServiceResult<string>> UnenrollFromCareerPathAsync(
+                   string userId,
+                   int userCareerPathId)
         {
             try
             {
-                var userCareerPath = await _userCareerPathRepository.FirstOrDefaultAsync(x =>
-                    x.UserCareerPathId == userCareerPathId && x.UserId == userId);
+                var userCareerPath = await _userCareerPathRepository.Query()
+                    .Include(x => x.CareerPath)
+                    .ThenInclude(cp => cp.CareerPathCourses)
+                    .FirstOrDefaultAsync(x =>
+                        x.UserCareerPathId == userCareerPathId &&
+                        x.UserId == userId);
 
                 if (userCareerPath == null)
-                    return ServiceResult<string>.Failure("User career path not found.", ServiceErrorCode.NotFound);
+                {
+                    return ServiceResult<string>.Failure(
+                        "User career path not found.",
+                        ServiceErrorCode.NotFound);
+                }
 
-                //  SOFT DELETE
+                // =========================
+                // CANCEL CAREER PATH
+                // =========================
+
                 userCareerPath.Status = CareerPathStatus.Cancelled;
                 userCareerPath.CompletedAt = DateTime.UtcNow;
 
+                // =========================
+                // CANCEL RELATED COURSES
+                // =========================
+
+                if (userCareerPath.CareerPath?.CareerPathCourses != null)
+                {
+                    var courseIds = userCareerPath.CareerPath
+                        .CareerPathCourses
+                        .Select(x => x.CourseId)
+                        .ToList();
+
+                    var userCourses = await _courseProgressRepository.Query()
+                        .Where(x =>
+                            x.UserId == userId &&
+                            courseIds.Contains(x.CourseId))
+                        .ToListAsync();
+
+                    if (userCourses.Any())
+                    {
+                        foreach (var course in userCourses)
+                        {
+                            course.Status = "Cancelled";
+
+                            // If you want hard delete instead:
+                            // _userCourseRepository.Delete(course);
+                        }
+
+                        await _courseProgressRepository.SaveChangesAsync();
+                    }
+                }
+
                 await _userCareerPathRepository.SaveChangesAsync();
 
-                return ServiceResult<string>.Success("Unenrolled successfully.");
+                return ServiceResult<string>.Success(
+                    "Unenrolled successfully.");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error unenrolling user {UserId}", userId);
-                return ServiceResult<string>.Failure("Error while unenrolling.");
+                _logger.LogError(
+                    ex,
+                    "Error unenrolling user {UserId}",
+                    userId);
+
+                return ServiceResult<string>.Failure(
+                    "Error while unenrolling.");
             }
         }
         public async Task<ServiceResult<List<UserCareerPathRS>>> GetUserCareerPathsAsync(string userId)
