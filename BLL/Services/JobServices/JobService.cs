@@ -49,7 +49,7 @@ namespace BLL.Services.JobServices
             _config = config;
             _mapper = mapper;
             _logger = logger;
-            _recentSearchService=recentSearchService;
+            _recentSearchService = recentSearchService;
         }
 
         public async Task<ServiceResult<List<JobRS>>> GetJobsAsync(JobFilterRQ filter)
@@ -61,10 +61,12 @@ namespace BLL.Services.JobServices
                     .Include(j => j.SkillRequirements)
                         .ThenInclude(sr => sr.Skill)
                     .AsQueryable();
-                  if(filter.IsActive)
+
+                if (filter.IsActive)
                     query = query.Where(j => j.IsActive);
                 else if (!filter.IsActive)
                     query = query.Where(j => j.IsActive == false);
+
                 if (!string.IsNullOrWhiteSpace(filter.SearchTerm))
                 {
                     var term = filter.SearchTerm.ToLower();
@@ -101,6 +103,7 @@ namespace BLL.Services.JobServices
                 return ServiceResult<List<JobRS>>.Failure("Error retrieving jobs.");
             }
         }
+
         public async Task<ServiceResult<List<JobRS>>> SearchJobsAsync(string name, string? userId = null)
         {
             try
@@ -113,11 +116,10 @@ namespace BLL.Services.JobServices
                 name = name.Trim().ToLower();
                 var query = _jobRepository.Query();
 
-
                 var jobs = await query
-      .Include(c => c.SkillRequirements)
-      .Take(200) 
-      .ToListAsync();
+                    .Include(c => c.SkillRequirements)
+                    .Take(200)
+                    .ToListAsync();
 
                 var filtered = jobs
                     .Select(j => new
@@ -125,7 +127,7 @@ namespace BLL.Services.JobServices
                         Job = j,
                         Score = FuzzySharp.Fuzz.PartialRatio(j.JobTitle.ToLower(), name)
                     })
-                    .Where(x => x.Score >= 50) 
+                    .Where(x => x.Score >= 50)
                     .OrderByDescending(x => x.Score)
                     .Take(20)
                     .Select(x => x.Job)
@@ -147,6 +149,7 @@ namespace BLL.Services.JobServices
                     .Failure("Error searching jobs.");
             }
         }
+
         public async Task<ServiceResult<JobRS>> GetJobByIdAsync(int id)
         {
             try
@@ -202,6 +205,9 @@ namespace BLL.Services.JobServices
 
                     if (requiredSkillIds.Any())
                     {
+                        // ✅ Minimum match threshold: user must match at least 50% of required skills
+                        int minMatchCount = Math.Max(1, requiredSkillIds.Count / 2);
+
                         var matchedUsers = await _userSkillRepository.Query()
                             .Where(us => requiredSkillIds.Contains(us.SkillId))
                             .GroupBy(us => us.UserId)
@@ -210,6 +216,7 @@ namespace BLL.Services.JobServices
                                 UserId = g.Key,
                                 MatchCount = g.Count()
                             })
+                            .Where(x => x.MatchCount >= minMatchCount) // ✅ Only genuinely matched users
                             .OrderByDescending(x => x.MatchCount)
                             .Take(200)
                             .ToListAsync();
@@ -237,12 +244,13 @@ namespace BLL.Services.JobServices
 
                             var details = parts.Any() ? string.Join(" | ", parts) : null;
 
-                            // 🔥 send per-user notification with match strength
+                            // 🔥 Send per-user notification with match strength
                             foreach (var user in matchedUsers)
                             {
                                 try
                                 {
-                                    var matchInfo = $"🔥 {user.MatchCount} skill(s) matched";
+                                    var matchPercent = (int)Math.Round((double)user.MatchCount / requiredSkillIds.Count * 100);
+                                    var matchInfo = $"🎯 {user.MatchCount}/{requiredSkillIds.Count} skills matched ({matchPercent}%)";
 
                                     var message = details != null
                                         ? $"{job.JobTitle}\n{details}\n\n{matchInfo}\n✨ Matches your profile. Check it out!"
@@ -264,6 +272,13 @@ namespace BLL.Services.JobServices
                                         job.JobId);
                                 }
                             }
+
+                            _logger.LogInformation(
+                                "Sent job match notifications to {Count} users for job {JobId} (min match: {Min}/{Total} skills)",
+                                matchedUsers.Count,
+                                job.JobId,
+                                minMatchCount,
+                                requiredSkillIds.Count);
                         }
                     }
                 }
@@ -375,6 +390,7 @@ namespace BLL.Services.JobServices
                 return ServiceResult<List<JobRS>>.Failure("Error getting job recommendations.");
             }
         }
+
         private async Task ExtractAndLinkSkillsAsync(
             int jobId,
             string title,
@@ -386,9 +402,7 @@ namespace BLL.Services.JobServices
 
                 if (!apiKeys.Any())
                 {
-                    _logger.LogWarning(
-                        "No Gemini API keys configured.");
-
+                    _logger.LogWarning("No Gemini API keys configured.");
                     return;
                 }
 
@@ -414,15 +428,14 @@ Description:
                 {
                     contents = new[]
                     {
-                new
-                {
-                    parts = new[]
-                    {
-                        new { text = prompt }
-                    }
-                }
-            },
-
+                        new
+                        {
+                            parts = new[]
+                            {
+                                new { text = prompt }
+                            }
+                        }
+                    },
                     generationConfig = new
                     {
                         temperature = 0.2,
@@ -430,27 +443,20 @@ Description:
                     }
                 };
 
-                var client =
-                    _httpClientFactory.CreateClient("GeminiClient");
+                var client = _httpClientFactory.CreateClient("GeminiClient");
 
                 int totalKeys = apiKeys.Count;
-
                 List<string>? skills = null;
 
                 for (int i = 0; i < totalKeys; i++)
                 {
-                    var index =
-                        Interlocked.Increment(ref _currentGeminiKeyIndex);
-
+                    var index = Interlocked.Increment(ref _currentGeminiKeyIndex);
                     var apiKey = apiKeys[index % totalKeys];
 
                     try
                     {
                         client.DefaultRequestHeaders.Remove("x-goog-api-key");
-
-                        client.DefaultRequestHeaders.TryAddWithoutValidation(
-                            "x-goog-api-key",
-                            apiKey);
+                        client.DefaultRequestHeaders.TryAddWithoutValidation("x-goog-api-key", apiKey);
 
                         using var content = new StringContent(
                             JsonSerializer.Serialize(requestBody),
@@ -461,14 +467,11 @@ Description:
                             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
                             content);
 
-                        var responseString =
-                            await response.Content.ReadAsStringAsync();
+                        var responseString = await response.Content.ReadAsStringAsync();
 
-                        // SUCCESS
                         if (response.IsSuccessStatusCode)
                         {
-                            using var doc =
-                                JsonDocument.Parse(responseString);
+                            using var doc = JsonDocument.Parse(responseString);
 
                             var aiText = doc.RootElement
                                 .GetProperty("candidates")[0]
@@ -486,9 +489,7 @@ Description:
                                 .Replace("```", "")
                                 .Trim();
 
-                            skills =
-                                JsonSerializer.Deserialize<List<string>>(
-                                    aiText);
+                            skills = JsonSerializer.Deserialize<List<string>>(aiText);
 
                             if (skills != null && skills.Any())
                                 break;
@@ -496,18 +497,14 @@ Description:
                             continue;
                         }
 
-                        // RETRYABLE ERRORS
-                        if ((int)response.StatusCode == 429 ||
-                            (int)response.StatusCode == 503)
+                        if ((int)response.StatusCode == 429 || (int)response.StatusCode == 503)
                         {
                             _logger.LogWarning(
                                 "Gemini key failed with {Status}. Trying next key...",
                                 response.StatusCode);
-
                             continue;
                         }
 
-                        // OTHER ERRORS
                         _logger.LogError(
                             "Gemini skill extraction failed with status {Status}. Body: {Body}",
                             response.StatusCode,
@@ -515,47 +512,34 @@ Description:
                     }
                     catch (TaskCanceledException)
                     {
-                        _logger.LogWarning(
-                            "Gemini request timed out. Trying next key...");
-
+                        _logger.LogWarning("Gemini request timed out. Trying next key...");
                         continue;
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(
-                            ex,
-                            "Gemini key failed. Trying next key...");
+                        _logger.LogError(ex, "Gemini key failed. Trying next key...");
                     }
                 }
 
                 if (skills == null || !skills.Any())
                 {
-                    _logger.LogWarning(
-                        "No skills extracted for job {JobId}",
-                        jobId);
-
+                    _logger.LogWarning("No skills extracted for job {JobId}", jobId);
                     return;
                 }
 
-                var allGlobalSkills =
-                    await _skillRepository.GetAllAsync();
+                var allGlobalSkills = await _skillRepository.GetAllAsync();
 
-                foreach (var skillName in skills.Where(s =>
-                             !string.IsNullOrWhiteSpace(s)))
+                foreach (var skillName in skills.Where(s => !string.IsNullOrWhiteSpace(s)))
                 {
-                    var skillLower =
-                        skillName.ToLower().Trim();
+                    var skillLower = skillName.ToLower().Trim();
 
-                    var globalSkill =
-                        allGlobalSkills.FirstOrDefault(s =>
-                        {
-                            var gl =
-                                s.SkillName.ToLower().Trim();
-
-                            return gl == skillLower ||
-                                   gl.Contains(skillLower) ||
-                                   skillLower.Contains(gl);
-                        });
+                    var globalSkill = allGlobalSkills.FirstOrDefault(s =>
+                    {
+                        var gl = s.SkillName.ToLower().Trim();
+                        return gl == skillLower ||
+                               gl.Contains(skillLower) ||
+                               skillLower.Contains(gl);
+                    });
 
                     if (globalSkill == null)
                     {
@@ -572,21 +556,17 @@ Description:
                         allGlobalSkills.Add(globalSkill);
                     }
 
-                    var exists =
-                        await _skillReqRepository.AnyAsync(
-                            sr =>
-                                sr.JobId == jobId &&
-                                sr.SkillId == globalSkill.SkillId);
+                    var exists = await _skillReqRepository.AnyAsync(
+                        sr => sr.JobId == jobId && sr.SkillId == globalSkill.SkillId);
 
                     if (!exists)
                     {
-                        await _skillReqRepository.AddAsync(
-                            new JobSkillRequirement
-                            {
-                                JobId = jobId,
-                                SkillId = globalSkill.SkillId,
-                                IsMandatory = true
-                            });
+                        await _skillReqRepository.AddAsync(new JobSkillRequirement
+                        {
+                            JobId = jobId,
+                            SkillId = globalSkill.SkillId,
+                            IsMandatory = true
+                        });
                     }
                 }
 
@@ -599,12 +579,10 @@ Description:
             }
             catch (Exception ex)
             {
-                _logger.LogError(
-                    ex,
-                    "Job skill extraction failed for JobId {JobId}",
-                    jobId);
+                _logger.LogError(ex, "Job skill extraction failed for JobId {JobId}", jobId);
             }
         }
+
         private List<string> GetGeminiApiKeys()
         {
             return _config
